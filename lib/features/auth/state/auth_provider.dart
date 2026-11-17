@@ -1,0 +1,307 @@
+import 'package:flutter/foundation.dart';
+
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/storage/local_store.dart';
+import '../../../data/api/account_api.dart';
+import '../../../data/api/auth_api.dart';
+import '../../../data/models/user.dart';
+
+class AuthProvider extends ChangeNotifier {
+  AuthProvider({
+    required ApiClient api,
+    required AuthApi authApi,
+    required AccountApi accountApi,
+    required LocalStore store,
+  })  : _api = api,
+        _authApi = authApi,
+        _accountApi = accountApi,
+        _store = store {
+    _api.onUnauthorized = _handleUnauthorized;
+    _restore();
+  }
+
+  static const _tokenKey = 'auth_access_token';
+  static const _refreshKey = 'auth_refresh_token';
+  static const _guestKey = 'auth_is_guest';
+  static const _userKey = 'auth_user_cache';
+
+  final ApiClient _api;
+  final AuthApi _authApi;
+  final AccountApi _accountApi;
+  final LocalStore _store;
+
+  String _accessToken = '';
+  String _refreshToken = '';
+  bool _isGuest = false;
+  bool _initializing = true;
+  bool _loading = false;
+  String? _error;
+  UserProfile? _user;
+  String _pending2faTicket = '';
+
+  String get accessToken => _accessToken;
+  String get refreshToken => _refreshToken;
+  bool get isGuest => _isGuest;
+  bool get isLoggedIn => _accessToken.isNotEmpty && !_isGuest;
+  bool get isAuthenticated => _accessToken.isNotEmpty;
+  bool get canAccessAccount => isLoggedIn;
+  bool get initializing => _initializing;
+  bool get loading => _loading;
+  String? get error => _error;
+  UserProfile? get user => _user;
+  String get pending2faTicket => _pending2faTicket;
+
+  String get displayName {
+    if (_isGuest) return '游客';
+    return _user?.displayName ?? 'KK用户';
+  }
+
+  void _restore() {
+    _accessToken = _store.getString(_tokenKey) ?? '';
+    _refreshToken = _store.getString(_refreshKey) ?? '';
+    _isGuest = _store.getBool(_guestKey) ?? false;
+    final cached = _store.getMap(_userKey);
+    if (cached.isNotEmpty) {
+      _user = UserProfile.fromJson(cached);
+    }
+    _api.setToken(_accessToken.isEmpty ? null : _accessToken);
+    _initializing = false;
+    notifyListeners();
+    if (isLoggedIn) {
+      refreshProfile(silent: true);
+    }
+  }
+
+  Future<void> refreshProfile({bool silent = false}) async {
+    if (!isLoggedIn) return;
+    if (!silent) {
+      _loading = true;
+      notifyListeners();
+    }
+    try {
+      final result = await _accountApi.profile();
+      if (result.user != null) {
+        _user = result.user!.copyWith(unreadMessages: result.unreadMessages);
+        await _store.setMap(_userKey, _userToJson(_user!));
+        notifyListeners();
+      }
+    } catch (_) {
+      // 静默刷新失败不打断使用，网络恢复后重试。
+    } finally {
+      if (!silent) {
+        _loading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<LoginResult?> loginPassword({
+    required String account,
+    required String password,
+  }) async {
+    return _doLogin(() => _authApi.login(
+          method: 'password',
+          account: account.trim(),
+          password: password,
+        ));
+  }
+
+  Future<LoginResult?> loginPhone({
+    required String phone,
+    required String code,
+  }) async {
+    return _doLogin(() => _authApi.login(
+          method: 'phone',
+          account: phone.trim(),
+          code: code.trim(),
+        ));
+  }
+
+  Future<LoginResult?> loginEmail({
+    required String email,
+    required String code,
+  }) async {
+    return _doLogin(() => _authApi.login(
+          method: 'email',
+          account: email.trim(),
+          code: code.trim(),
+        ));
+  }
+
+  Future<LoginResult?> register({
+    required String method,
+    required String phone,
+    required String email,
+    required String code,
+    required String password,
+    String? inviteCode,
+  }) async {
+    return _doLogin(() => _authApi.register(
+          method: method,
+          phone: phone.trim(),
+          email: email.trim(),
+          code: code.trim(),
+          password: password,
+          inviteCode: inviteCode,
+        ));
+  }
+
+  Future<void> loginAsGuest() async {
+    _setLoading(true);
+    try {
+      final result = await _authApi.guest();
+      _accessToken = result.accessToken;
+      _isGuest = true;
+      _user = null;
+      _api.setToken(_accessToken);
+      await _persist();
+      _error = null;
+    } on ApiException catch (error) {
+      _error = error.message;
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<LoginResult?> _doLogin(Future<LoginResult> Function() action) async {
+    _setLoading(true);
+    try {
+      final result = await action();
+      if (result.need2fa) {
+        _pending2faTicket = result.ticket;
+        _error = null;
+        return result;
+      }
+      await _applyLogin(result);
+      return result;
+    } on ApiException catch (error) {
+      _error = error.message;
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<LoginResult> verify2fa(String code) async {
+    _setLoading(true);
+    try {
+      final result = await _authApi.verify2fa(ticket: _pending2faTicket, code: code.trim());
+      await _applyLogin(result);
+      _pending2faTicket = '';
+      return result;
+    } on ApiException catch (error) {
+      _error = error.message;
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> oauthLogin({
+    required String provider,
+    required String code,
+    required String state,
+  }) async {
+    _setLoading(true);
+    try {
+      final result = await _authApi.oauthCallback(provider: provider, code: code, state: state);
+      if (result.need2fa) {
+        _pending2faTicket = result.ticket;
+        return;
+      }
+      await _applyLogin(result);
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  Future<void> _applyLogin(LoginResult result) async {
+    _accessToken = result.accessToken;
+    _refreshToken = result.refreshToken;
+    _isGuest = result.guest;
+    _user = result.user;
+    _api.setToken(_accessToken);
+    await _persist();
+    notifyListeners();
+    if (isLoggedIn) {
+      unawaited(refreshProfile(silent: true));
+    }
+  }
+
+  Future<void> _persist() async {
+    await _store.setString(_tokenKey, _accessToken);
+    await _store.setString(_refreshKey, _refreshToken);
+    await _store.setBool(_guestKey, _isGuest);
+    if (_user != null) {
+      await _store.setMap(_userKey, _userToJson(_user!));
+    } else {
+      await _store.remove(_userKey);
+    }
+  }
+
+  Future<void> updateUser(UserProfile user) async {
+    _user = user;
+    await _store.setMap(_userKey, _userToJson(user));
+    notifyListeners();
+  }
+
+  Future<void> logout({bool callApi = true}) async {
+    if (callApi && _accessToken.isNotEmpty) {
+      try {
+        await _authApi.logout(refreshToken: _refreshToken);
+      } catch (_) {
+        // 忽略退出接口异常，本地会话必须清除。
+      }
+    }
+    _accessToken = '';
+    _refreshToken = '';
+    _isGuest = false;
+    _user = null;
+    _pending2faTicket = '';
+    _api.setToken(null);
+    await _store.remove(_tokenKey);
+    await _store.remove(_refreshKey);
+    await _store.setBool(_guestKey, false);
+    await _store.remove(_userKey);
+    notifyListeners();
+  }
+
+  Future<void> _handleUnauthorized() async {
+    if (_accessToken.isEmpty) return;
+    await logout(callApi: false);
+  }
+
+  void _setLoading(bool value) {
+    _loading = value;
+    if (value) _error = null;
+    notifyListeners();
+  }
+
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  Map<String, dynamic> _userToJson(UserProfile profile) => {
+        'id': profile.id,
+        'username': profile.username,
+        'nickname': profile.nickname,
+        'avatar': profile.avatar,
+        'signature': profile.signature,
+        'phone': profile.phone,
+        'email': profile.email,
+        'status': profile.status,
+        'totpEnabled': profile.totpEnabled,
+        'unreadMessages': profile.unreadMessages,
+        'createdAt': profile.createdAt?.toIso8601String(),
+        'quotaConcurrent': profile.quotaConcurrent,
+        'quotaMonthlyTrafficMb': profile.quotaMonthlyTrafficMb,
+      };
+}
+
+void unawaited(Future<void> future) {
+  // 明确忽略后台任务结果的辅助函数。
+  future.catchError((Object _) {});
+}

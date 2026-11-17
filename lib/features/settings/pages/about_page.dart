@@ -1,0 +1,182 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/json_utils.dart';
+import '../../../state/app_services.dart';
+import '../../../widgets/app_dialogs.dart';
+import '../../../widgets/brand_logo.dart';
+import '../../../widgets/settings_widgets.dart';
+
+class AboutPage extends StatefulWidget {
+  const AboutPage({super.key});
+
+  @override
+  State<AboutPage> createState() => _AboutPageState();
+}
+
+class _AboutPageState extends State<AboutPage> {
+  String _version = AppConstants.appVersion;
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _version = '${info.version} (${info.buildNumber})');
+    });
+  }
+
+  Future<void> _checkUpdate() async {
+    setState(() => _checking = true);
+    try {
+      final platform = Platform.isIOS ? 'ios' : 'android';
+      final data = asMap(await context.read<AppServices>().api.get(
+            '/client/versions/latest',
+            query: {'platform': platform, 'version': AppConstants.appVersion},
+          ));
+      if (!mounted) return;
+      if (data.isEmpty) {
+        await showInfoDialog(context, title: '检查更新', content: '当前已是最新版本。');
+        return;
+      }
+      final version = asString(data['version']);
+      final changelog = asString(data['changelog']);
+      final downloadUrl = asString(data['downloadUrl']);
+      final force = asBool(data['forceUpdate']);
+      if (version.isEmpty || version == AppConstants.appVersion) {
+        await showInfoDialog(context, title: '检查更新', content: '当前已是最新版本。');
+        return;
+      }
+      if (!mounted) return;
+      final update = await showConfirmDialog(
+        context,
+        title: force ? '发现强制更新' : '发现新版本 $version',
+        content: changelog.isEmpty ? '建议更新到最新版本以获得更好的体验。' : changelog,
+        confirmText: '立即更新',
+        cancelText: '稍后',
+      );
+      if (update && downloadUrl.isNotEmpty) {
+        await launchUrl(Uri.parse(downloadUrl), mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('检查更新失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Future<void> _showProtocol(String type) async {
+    try {
+      final data = await context.read<AppServices>().contentApi.protocolsLatest();
+      final item = asMap(data[type]);
+      final content = asString(item['content']);
+      if (!mounted) return;
+      await showInfoDialog(
+        context,
+        title: type == 'privacy' ? '隐私政策' : '用户协议',
+        content: content.isEmpty ? '协议内容由后台配置下发，请稍后重试。' : content,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
+        ),
+        title: const Text('关于'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          const SizedBox(height: 12),
+          const Center(child: BrandLogo(size: 84, subtitle: '安全、流畅的跨端远程控制')),
+          const SizedBox(height: 18),
+          Center(
+            child: Text(
+              '版本 $_version',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SettingsGroup(
+            children: [
+              SettingsTile(
+                title: '检查更新',
+                subtitle: _checking ? '正在检查…' : '获取最新版本与更新说明',
+                leading: const IconBadge(icon: Icons.system_update_alt_rounded),
+                trailing: _checking
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+                onTap: _checking ? null : _checkUpdate,
+              ),
+              SettingsTile(
+                title: '用户协议',
+                leading: const IconBadge(icon: Icons.description_outlined),
+                onTap: () => _showProtocol('user'),
+              ),
+              SettingsTile(
+                title: '隐私政策',
+                leading: const IconBadge(icon: Icons.privacy_tip_outlined),
+                onTap: () => _showProtocol('privacy'),
+              ),
+              SettingsTile(
+                title: '意见反馈',
+                subtitle: '前往帮助与反馈，联系在线客服或提交工单',
+                leading: const IconBadge(icon: Icons.feedback_outlined),
+                onTap: () => context.push('/help'),
+              ),
+              SettingsTile(
+                title: '无障碍说明',
+                leading: const IconBadge(icon: Icons.accessibility_new_rounded),
+                onTap: () => context.push('/settings/accessibility'),
+              ),
+              SettingsTile(
+                title: '开源许可声明',
+                subtitle: '查看使用的第三方开源组件许可',
+                leading: const IconBadge(icon: Icons.code_rounded),
+                onTap: () => showLicensePage(
+                  context: context,
+                  applicationName: AppConstants.productName,
+                  applicationVersion: _version,
+                  applicationIcon: const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: BrandLogo(size: 64, showName: false),
+                  ),
+                ),
+                showDivider: false,
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              '© 2026 KK远程 · 保留所有权利',
+              style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
+            ),
+          ),
+
+        ],
+      ),
+    );
+  }
+}
