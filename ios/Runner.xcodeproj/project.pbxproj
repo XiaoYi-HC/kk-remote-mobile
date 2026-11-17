@@ -11,6 +11,7 @@
 		AA0000000000000000000012 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000022 /* Main.storyboard */; };
 		AA0000000000000000000013 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000023 /* LaunchScreen.storyboard */; };
 		AA0000000000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000024 /* Assets.xcassets */; };
+		AA0000000000000000000015 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000002B /* GeneratedPluginRegistrant.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,8 @@
 		AA0000000000000000000028 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		AA0000000000000000000029 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		AA000000000000000000002A /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		AA000000000000000000002B /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
+		AA000000000000000000002C /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +54,8 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000021 /* AppDelegate.swift */,
+				AA000000000000000000002B /* GeneratedPluginRegistrant.m */,
+				AA000000000000000000002C /* GeneratedPluginRegistrant.h */,
 				AA0000000000000000000024 /* Assets.xcassets */,
 				AA0000000000000000000032 /* Base.lproj */,
 				AA0000000000000000000025 /* Info.plist */,
@@ -212,6 +217,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000011 /* AppDelegate.swift in Sources */,
+				AA0000000000000000000015 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
