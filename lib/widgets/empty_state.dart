@@ -24,14 +24,10 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            SizedBox(
               width: 64,
               height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.primarySoft,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: AppColors.primary, size: 30),
+              child: Icon(icon, color: Colors.black, size: 34),
             ),
             const SizedBox(height: 16),
             Text(
