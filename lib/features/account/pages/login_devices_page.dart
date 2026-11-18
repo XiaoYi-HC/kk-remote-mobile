@@ -80,10 +80,14 @@ class _LoginDevicesPageState extends State<LoginDevicesPage> {
                   action: OutlinedButton(onPressed: _load, child: const Text('重试')),
                 )
               : _devices.isEmpty
-                  ? const EmptyState(
+                  ? EmptyState(
                       icon: Icons.devices_other_rounded,
                       title: '暂无其他登录设备',
                       description: '当前账号只在当前设备登录',
+                      action: OutlinedButton(
+                        onPressed: _load,
+                        child: const Text('刷新'),
+                      ),
                     )
                   : RefreshIndicator(
                       onRefresh: _load,
