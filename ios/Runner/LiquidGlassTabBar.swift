@@ -41,34 +41,29 @@ final class LiquidTabBarModel: ObservableObject {
 @available(iOS 26.0, *)
 struct LiquidGlassTabBar: View {
     @ObservedObject var model: LiquidTabBarModel
-    @Namespace private var glassNamespace
+    @Namespace private var selectionNamespace
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        GlassEffectContainer(spacing: 18) {
-            HStack(spacing: 6) {
+        GlassEffectContainer(spacing: 0) {
+            // 统一框架：一整块玻璃胶囊，选中项是内部滑动的胶囊高亮。
+            HStack(spacing: 4) {
                 ForEach(model.items) { item in
                     tabButton(item)
-                        .glassEffect(
-                            glassStyle(for: item),
-                            in: Capsule()
-                        )
-                        .glassEffectID(item.id, in: glassNamespace)
                 }
             }
-            .padding(6)
+            .padding(5)
+            .glassEffect(.regular.interactive(), in: Capsule())
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 8)
         .animation(
-            reduceMotion ? .none : .spring(response: 0.42, dampingFraction: 0.76),
+            reduceMotion ? .none : .spring(response: 0.42, dampingFraction: 0.78),
             value: model.selection
         )
     }
 
-    // 选中项使用强调玻璃，其余使用普通玻璃；开启"降低透明度"时退化为实心胶囊。
     @ViewBuilder
     private func tabButton(_ item: LiquidTabItem) -> some View {
         let selected = model.selection == item.id
@@ -82,22 +77,23 @@ struct LiquidGlassTabBar: View {
                     .font(.system(size: 10.5, weight: selected ? .semibold : .regular))
                     .lineLimit(1)
             }
-            .foregroundStyle(selected ? Color.accentColor : Color.primary.opacity(0.78))
+            .foregroundStyle(selected ? Color.accentColor : Color.primary.opacity(0.72))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
+            .background {
+                if selected {
+                    Capsule()
+                        .fill(
+                            Color.accentColor.opacity(colorScheme == .dark ? 0.28 : 0.14)
+                        )
+                        .matchedGeometryEffect(id: "selection", in: selectionNamespace)
+                }
+            }
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    private func glassStyle(for item: LiquidTabItem) -> Glass {
-        let selected = model.selection == item.id
-        if selected {
-            return .regular.tint(Color.accentColor.opacity(0.35)).interactive()
-        }
-        return .regular.interactive()
     }
 }
 
