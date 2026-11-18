@@ -23,6 +23,7 @@ class RemoteGestureLayer extends StatefulWidget {
     required this.onRightClick,
     required this.onWheel,
     this.onThreeFingerTap,
+    this.videoAspectRatio,
   });
 
   final Widget child;
@@ -36,6 +37,9 @@ class RemoteGestureLayer extends StatefulWidget {
   final void Function(double x, double y) onRightClick;
   final void Function(int delta) onWheel;
   final VoidCallback? onThreeFingerTap;
+
+  /// 远端画面宽高比；为空或非法时按铺满处理。
+  final double? videoAspectRatio;
 
   @override
   State<RemoteGestureLayer> createState() => _RemoteGestureLayerState();
@@ -68,16 +72,37 @@ class _RemoteGestureLayerState extends State<RemoteGestureLayer> {
     super.dispose();
   }
 
+  /// 视频在 BoxFit.contain 下实际占用的区域（扣除上下或左右黑边）。
+  Rect _videoRect(Size size) {
+    final ratio = widget.videoAspectRatio;
+    if (ratio == null || ratio <= 0 || !ratio.isFinite) {
+      return Offset.zero & size;
+    }
+    final boxRatio = size.width / size.height;
+    if (ratio > boxRatio) {
+      final height = size.width / ratio;
+      return Rect.fromLTWH(0, (size.height - height) / 2, size.width, height);
+    }
+    final width = size.height * ratio;
+    return Rect.fromLTWH((size.width - width) / 2, 0, width, size.height);
+  }
+
   Offset _normalized(Offset local, Size size) {
     final logical = (local - _offset) / _scale;
+    final rect = _videoRect(size);
     return Offset(
-      (logical.dx / size.width).clamp(0.0, 1.0).toDouble(),
-      (logical.dy / size.height).clamp(0.0, 1.0).toDouble(),
+      ((logical.dx - rect.left) / rect.width).clamp(0.0, 1.0).toDouble(),
+      ((logical.dy - rect.top) / rect.height).clamp(0.0, 1.0).toDouble(),
     );
   }
 
   Offset _screenFor(Offset normalized, Size size) {
-    return normalized * _scale + _offset;
+    final rect = _videoRect(size);
+    final logical = Offset(
+      rect.left + normalized.dx * rect.width,
+      rect.top + normalized.dy * rect.height,
+    );
+    return logical * _scale + _offset;
   }
 
   void _resetLongPress() {
@@ -134,11 +159,12 @@ class _RemoteGestureLayerState extends State<RemoteGestureLayer> {
       _lastSinglePosition = event.localPosition;
       if (!widget.inputEnabled) return;
       if (widget.trackballMode) {
+        final rect = _videoRect(size);
         final next = Offset(
-          (_trackball.dx + delta.dx / size.width * widget.touchSensitivity)
+          (_trackball.dx + delta.dx / rect.width * widget.touchSensitivity)
               .clamp(0.0, 1.0)
               .toDouble(),
-          (_trackball.dy + delta.dy / size.height * widget.touchSensitivity)
+          (_trackball.dy + delta.dy / rect.height * widget.touchSensitivity)
               .clamp(0.0, 1.0)
               .toDouble(),
         );
