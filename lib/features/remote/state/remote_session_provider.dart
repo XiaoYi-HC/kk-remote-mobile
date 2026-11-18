@@ -28,6 +28,16 @@ class RemoteSessionProvider extends ChangeNotifier {
     castMode = args.castMode;
     trackballMode = settings.trackballMode;
     viewOnly = args.mode == 'view';
+    audioEnabled = settings.audioEnabled;
+    cursorHidden = settings.hideCursor;
+    if (!settings.allowRelay) {
+      // 关闭"允许中继"后不再向 ICE 注入 TURN 节点，避免实际仍走中继。
+      _iceServers = _iceServers
+          .where((server) => !server.urls.any(
+                (url) => url.trim().toLowerCase().startsWith('turn'),
+              ))
+          .toList();
+    }
   }
 
   final AppServices services;
@@ -45,8 +55,10 @@ class RemoteSessionProvider extends ChangeNotifier {
   int _reconnectAttempts = 0;
   bool _starting = false;
   bool _closedByUser = false;
+  bool _disposed = false;
   int _trafficBytes = 0;
   DateTime _lastTrafficAt = DateTime.now();
+  DateTime? _lastQualityAdjustAt;
 
   RemoteStage stage = RemoteStage.matching;
   RemoteFailure? failure;
@@ -132,7 +144,11 @@ class RemoteSessionProvider extends ChangeNotifier {
     _lastTrafficAt = DateTime.now();
     notifyListeners();
 
-    _subs.add(_signaling.events.listen(_onSignalingEvent));
+    _subs.add(_signaling.events.listen((event) {
+      _onSignalingEvent(event).catchError((Object error) {
+        if (kDebugMode) debugPrint('signaling event failed: $error');
+      });
+    }));
     try {
       await _signaling.connect(
         signalingUrl: settings.resolvedSignalingUrl,
@@ -146,13 +162,13 @@ class RemoteSessionProvider extends ChangeNotifier {
         targetDeviceCode: args.deviceCode,
         verifyCode: args.verifyCode,
         password: args.password,
-        qualityPreset: settings.qualityPreset,
+        qualityPreset: settings.saveDataMode ? 'sd' : settings.qualityPreset,
         controllerDeviceName: Platform.isIOS ? 'KK远程 iPhone' : 'KK远程手机',
         controllerPlatform: Platform.isIOS ? 'ios' : 'android',
         mode: viewOnly ? 'view' : 'control',
       );
       _startTimers();
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid && settings.backgroundKeepAlive) {
         services.native.startRemoteForegroundService();
       }
     } catch (error) {
@@ -323,10 +339,16 @@ class RemoteSessionProvider extends ChangeNotifier {
     _subs.add(manager.connectionLog.listen((log) {
       if (kDebugMode) debugPrint('[remote] $log');
     }));
-    await manager.initialize();
-    renderer = manager.renderer;
-    await manager.setSpeakerphoneOn(true);
-    await manager.setRemoteAudioEnabled(audioEnabled);
+    try {
+      await manager.initialize();
+      renderer = manager.renderer;
+      await manager.setSpeakerphoneOn(true);
+      await manager.setRemoteAudioEnabled(audioEnabled);
+    } catch (error) {
+      await _disposePeer();
+      _fail('internal_error', '建立媒体连接失败：$error');
+      return;
+    }
     notifyListeners();
     try {
       final offer = await manager.createOffer();
@@ -414,7 +436,35 @@ class RemoteSessionProvider extends ChangeNotifier {
     } else if (transport.isRelay && stage == RemoteStage.p2pConnected) {
       stage = RemoteStage.relayConnected;
     }
+    _maybeAdaptQuality(info);
     notifyListeners();
+  }
+
+  /// 弱网自适应：按丢包/延迟动态下调码率，网络恢复后回升到不超过恢复阈值。
+  void _maybeAdaptQuality(TransportInfo info) {
+    if (!settings.lowBandwidthAdaptive || !connected) return;
+    final now = DateTime.now();
+    if (_lastQualityAdjustAt != null &&
+        now.difference(_lastQualityAdjustAt!) < const Duration(seconds: 8)) {
+      return;
+    }
+    final loss = info.lossRate > 0 ? info.lossRate : transport.lossRate;
+    final rtt = info.rttMs > 0 ? info.rttMs : transport.rttMs;
+    final limit = settings.bitrateLimit > 0 ? settings.bitrateLimit : 4000;
+    final current = transport.bitrateKbps > 0 ? transport.bitrateKbps : limit;
+    if (loss >= 0.05 || rtt >= 350) {
+      final target = math.max(settings.minBitrate, (current * 0.8).round());
+      if (target < current) {
+        updateQuality(preset: settings.qualityPreset, bitrateKbps: target);
+        _lastQualityAdjustAt = now;
+      }
+    } else if (loss <= 0.01 && rtt < 150 && current < settings.restoreThreshold) {
+      final target = math.min(limit, (current * 1.1).round());
+      if (target > current) {
+        updateQuality(preset: settings.qualityPreset, bitrateKbps: target);
+        _lastQualityAdjustAt = now;
+      }
+    }
   }
 
   String _resolveTransport(TransportInfo info, String current) {
@@ -452,7 +502,12 @@ class RemoteSessionProvider extends ChangeNotifier {
 
   void _handleRemoteClosed(String reason) {
     if (_closedByUser) return;
-    failure = RemoteFailure(reason, '会话已结束（$reason）');
+    unawaited(_disposePeer());
+    final ended = reason.isEmpty || reason == 'peer_closed' || reason == 'closed';
+    failure = RemoteFailure(
+      reason.isEmpty ? 'peer_closed' : reason,
+      ended ? '对方已结束远程会话' : '会话已结束（$reason）',
+    );
     stage = RemoteStage.failed;
     _stopTicking();
     notifyListeners();
@@ -486,6 +541,12 @@ class RemoteSessionProvider extends ChangeNotifier {
     sessionId = '';
     stage = RemoteStage.matching;
     failure = null;
+    // 重连属于新会话，必须清掉上一轮的画面状态，否则会残留隐私遮罩、旧显示器列表与传输指标。
+    privacyBlackScreen = false;
+    displays = const [];
+    activeDisplayId = '';
+    transport = const TransportInfo();
+    cameraState = const {};
     notifyListeners();
     await start();
   }
@@ -632,6 +693,8 @@ class RemoteSessionProvider extends ChangeNotifier {
     // 隐私黑屏由被控端权威执行，主控仅发送同步消息，最终状态以 privacy.sync 回传为准。
     _signaling.sendPrivacy(value);
     _signaling.sendControlRequest(action: 'privacy.set', payload: {'enabled': value});
+    // 信令可能正在重连，同时走已建立的 control 数据通道，避免指令丢失。
+    _peer?.sendControl({'t': 'privacy.sync', 'enabled': value});
     privacyBlackScreen = value;
     notifyListeners();
     return true;
@@ -777,7 +840,14 @@ class RemoteSessionProvider extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
     _closedByUser = true;
     _durationTimer?.cancel();
     _uiTicker?.cancel();
