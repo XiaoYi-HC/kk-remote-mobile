@@ -58,7 +58,8 @@ class _IdentityBindPageState extends State<IdentityBindPage> {
       final url = Uri.tryParse(data['url']?.toString() ?? '');
       final state = data['state']?.toString() ?? '';
       if (url == null) throw Exception('授权地址无效');
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!launched) throw Exception('无法打开授权页面');
       if (!mounted) return;
       final code = await showTextInputDialog(
         context,
@@ -150,7 +151,9 @@ class _IdentityBindPageState extends State<IdentityBindPage> {
                                     ? const Icon(Icons.apple, size: 22)
                                     : Text(
                                         AppConstants.providerGlyphs[channel.provider] ??
-                                            channel.name.characters.first,
+                                            (channel.name.trim().isEmpty
+                                                ? '·'
+                                                : channel.name.trim().characters.first),
                                         style: const TextStyle(
                                           fontSize: 16,
                                           fontWeight: FontWeight.w600,
