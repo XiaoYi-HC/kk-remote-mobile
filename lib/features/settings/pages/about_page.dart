@@ -76,20 +76,7 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   Future<void> _showProtocol(String type) async {
-    try {
-      final data = await context.read<AppServices>().contentApi.protocolsLatest();
-      final item = asMap(data[type]);
-      final content = asString(item['content']);
-      if (!mounted) return;
-      await showInfoDialog(
-        context,
-        title: type == 'privacy' ? '隐私政策' : '用户协议',
-        content: content.isEmpty ? '协议内容由后台配置下发，请稍后重试。' : content,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+    await context.push('/settings/protocol/$type');
   }
 
   @override
@@ -135,29 +122,14 @@ class _AboutPageState extends State<AboutPage> {
                 onTap: () => _showProtocol('privacy'),
               ),
               SettingsTile(
-                title: '意见反馈',
-                subtitle: '前往帮助与反馈，联系在线客服或提交工单',
-                leading: const IconBadge(icon: Icons.feedback_outlined),
-                onTap: () => context.push('/help'),
+                title: '儿童隐私政策',
+                leading: const IconBadge(icon: Icons.child_care_outlined),
+                onTap: () => _showProtocol('children'),
               ),
               SettingsTile(
-                title: '无障碍说明',
-                leading: const IconBadge(icon: Icons.accessibility_new_rounded),
-                onTap: () => context.push('/settings/accessibility'),
-              ),
-              SettingsTile(
-                title: '开源许可声明',
-                subtitle: '查看使用的第三方开源组件许可',
-                leading: const IconBadge(icon: Icons.code_rounded),
-                onTap: () => showLicensePage(
-                  context: context,
-                  applicationName: AppConstants.productName,
-                  applicationVersion: _version,
-                  applicationIcon: const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: BrandLogo(size: 64, showName: false),
-                  ),
-                ),
+                title: '第三方服务共享清单',
+                leading: const IconBadge(icon: Icons.handshake_outlined),
+                onTap: () => _showProtocol('third_party'),
                 showDivider: false,
               ),
             ],
