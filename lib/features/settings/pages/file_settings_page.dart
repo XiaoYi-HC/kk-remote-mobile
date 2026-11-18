@@ -26,6 +26,7 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
   String _path = '';
   int _size = 0;
   int _count = 0;
+  String? _error;
 
   @override
   void initState() {
@@ -34,43 +35,52 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
   }
 
   Future<void> _load() async {
-    final settings = context.read<SettingsProvider>();
-    var path = settings.downloadDir;
-    if (path.isEmpty) {
-      final downloads = await getDownloadsDirectory();
-      path = downloads == null
-          ? p.join((await getApplicationDocumentsDirectory()).path, 'KK远程下载')
-          : p.join(downloads.path, 'KK远程');
-    }
-    final dir = Directory(path);
-    if (!await dir.exists()) await dir.create(recursive: true);
-    var size = 0;
-    var count = 0;
-    await for (final entity in dir.list()) {
-      if (entity is File) {
-        count++;
-        try {
-          size += await entity.length();
-        } catch (_) {}
+    try {
+      final settings = context.read<SettingsProvider>();
+      var path = settings.downloadDir;
+      if (path.isEmpty) {
+        final downloads = await getDownloadsDirectory();
+        path = downloads == null
+            ? p.join((await getApplicationDocumentsDirectory()).path, 'KK远程下载')
+            : p.join(downloads.path, 'KK远程');
       }
-    }
-    if (mounted) {
+      final dir = Directory(path);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      var size = 0;
+      var count = 0;
+      await for (final entity in dir.list()) {
+        if (entity is File) {
+          count++;
+          try {
+            size += await entity.length();
+          } catch (_) {}
+        }
+      }
+      if (!mounted) return;
       setState(() {
         _path = path;
         _size = size;
         _count = count;
+        _error = null;
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '读取下载目录失败：$e');
     }
   }
 
   Future<void> _changeDirectory() async {
     final path = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择下载目录');
-    if (path == null) return;
+    if (path == null || !mounted) return;
     await context.read<SettingsProvider>().setString(SettingsKeys.downloadDir, path);
     await _load();
   }
 
   Future<void> _clearCache() async {
+    if (_path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('下载目录尚未就绪')));
+      return;
+    }
     final ok = await showConfirmDialog(
       context,
       title: '清理缓存',
@@ -78,16 +88,21 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
       confirmText: '清理',
       danger: true,
     );
-    if (!ok) return;
-    final dir = Directory(_path);
-    await for (final entity in dir.list()) {
-      try {
-        await entity.delete(recursive: true);
-      } catch (_) {}
-    }
-    await _load();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清理')));
+    if (!ok || !mounted) return;
+    try {
+      final dir = Directory(_path);
+      await for (final entity in dir.list()) {
+        try {
+          await entity.delete(recursive: true);
+        } catch (_) {}
+      }
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清理')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('清理失败：$e')));
     }
   }
 
@@ -102,14 +117,17 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
           SettingsGroup(
             children: [
               SettingsTile(
-                title: _path.isEmpty ? '正在读取下载目录' : _path,
+                title: _path.isEmpty ? '下载目录不可用' : _path,
                 subtitle: _path.isEmpty
-                    ? '远程下载、截图与录制的默认保存位置'
+                    ? (_error ?? '正在读取下载目录')
                     : '$_count 个文件 · ${Formatters.bytes(_size)}',
                 leading: const IconBadge(icon: Icons.folder_rounded),
                 trailing: TextButton(
-                  onPressed: _changeDirectory,
-                  child: const Text('更改', style: TextStyle(fontSize: 12)),
+                  onPressed: _path.isEmpty && _error != null ? _load : _changeDirectory,
+                  child: Text(
+                    _path.isEmpty && _error != null ? '重试' : '更改',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
               ),
               SettingsTile(
