@@ -9,6 +9,7 @@ import '../../../state/app_services.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/loading_view.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/user_avatar.dart';
 import '../../auth/state/auth_provider.dart';
 
 class AccountCenterPage extends StatefulWidget {
@@ -105,22 +106,10 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                     ),
                     child: Row(
                       children: [
-                        Container(
-                          width: 58,
-                          height: 58,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            color: AppColors.primarySoft,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            auth.displayName.characters.first,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
-                          ),
+                        UserAvatar(
+                          size: 58,
+                          avatar: auth.user?.avatar ?? '',
+                          name: auth.displayName,
                         ),
                         const SizedBox(width: 14),
                         Expanded(
