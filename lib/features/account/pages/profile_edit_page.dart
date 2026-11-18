@@ -115,7 +115,10 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
             avatar: _avatar,
           );
       if (!mounted) return;
-      await context.read<AuthProvider>().updateUser(updated);
+      final auth = context.read<AuthProvider>();
+      await auth.updateUser(updated);
+      // 再向服务端拉一次最新资料，确保头像等字段与后台一致。
+      await auth.refreshProfile(silent: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('资料已保存')));
       context.pop();
