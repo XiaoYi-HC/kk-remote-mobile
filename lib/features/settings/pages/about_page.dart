@@ -13,6 +13,7 @@ import '../../../state/app_services.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/brand_logo.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class AboutPage extends StatefulWidget {
   const AboutPage({super.key});
@@ -93,15 +94,9 @@ class _AboutPageState extends State<AboutPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('关于'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '关于',
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           const SizedBox(height: 12),
