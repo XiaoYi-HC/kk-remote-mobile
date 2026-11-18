@@ -70,8 +70,41 @@ class _BindAccountPageState extends State<BindAccountPage> {
     }
   }
 
+  Future<bool> _sendOldCode() async {
+    final current = _isEmail
+        ? context.read<AuthProvider>().user?.email ?? ''
+        : context.read<AuthProvider>().user?.phone ?? '';
+    if (current.isEmpty) {
+      setState(() => _error = '当前未绑定原${_isEmail ? '邮箱' : '手机号'}');
+      return false;
+    }
+    try {
+      if (_isEmail) {
+        await context.read<AppServices>().authApi.sendEmail(email: current, scene: 'bind');
+      } else {
+        await context.read<AppServices>().authApi.sendSms(phone: current, scene: 'bind');
+      }
+      if (!mounted) return true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('验证码已发送至原账号')),
+      );
+      return true;
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+      return false;
+    }
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final user = context.read<AuthProvider>().user;
+    final current = _isEmail ? user?.email ?? '' : user?.phone ?? '';
+    final target = _targetController.text.trim();
+    // 后端在"已绑定且号码变化"时强制校验原账号验证码，这里提前拦住，避免必然失败。
+    if (current.isNotEmpty && current != target && _oldCodeController.text.trim().isEmpty) {
+      setState(() => _error = '请先获取并填写原${_isEmail ? '邮箱' : '手机号'}验证码');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -204,14 +237,41 @@ class _BindAccountPageState extends State<BindAccountPage> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                AppTextField(
-                  controller: _oldCodeController,
-                  label: '原${_isEmail ? '邮箱' : '手机'}验证码（选填）',
-                  hint: '已绑定原账号时建议填写',
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: AppTextField(
+                        controller: _oldCodeController,
+                        label: current == null || current.isEmpty
+                            ? '原${_isEmail ? '邮箱' : '手机'}验证码'
+                            : '原${_isEmail ? '邮箱' : '手机'}验证码（必填）',
+                        hint: '用于验证原账号归属',
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                      ),
+                    ),
+                    if (current != null && current.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 25),
+                        child: Container(
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: CountdownButton(
+                            onSend: _sendOldCode,
+                            label: '获取原码',
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 if (_error != null) ...[
