@@ -52,6 +52,30 @@ class _ConnectLoadingState extends State<ConnectLoading> with TickerProviderStat
   bool get _failed => widget.stage == RemoteStage.failed;
   bool get _success => widget.stage.isConnected;
 
+  @override
+  void initState() {
+    super.initState();
+    _syncAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant ConnectLoading oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncAnimation();
+  }
+
+  void _syncAnimation() {
+    // 连接成功后加载页只是被透明化，动画必须停掉，避免后台持续占用帧调度。
+    final running = widget.visible && !_success;
+    if (running) {
+      if (!_breath.isAnimating) _breath.repeat(reverse: true);
+      if (!_rotate.isAnimating) _rotate.repeat();
+    } else {
+      _breath.stop();
+      _rotate.stop();
+    }
+  }
+
   int get _currentStep {
     switch (widget.stage) {
       case RemoteStage.idle:
@@ -288,6 +312,11 @@ class _ConnectLoadingState extends State<ConnectLoading> with TickerProviderStat
         return '凭证错误';
       case 'version_incompatible':
         return '版本不兼容';
+      case 'peer_closed':
+      case 'closed':
+        return '对方已结束会话';
+      case 'internal_error':
+        return '连接失败';
       default:
         return '内部错误';
     }
