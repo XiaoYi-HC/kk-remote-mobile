@@ -22,6 +22,7 @@ class PeerConnectionManager {
 
   RTCPeerConnection? _pc;
   RTCVideoRenderer? _renderer;
+  MediaStream? _remoteStream;
   final Map<String, RTCDataChannel> _channels = {};
   final List<Map<String, dynamic>> _controlQueue = [];
   final List<RTCIceCandidate> _pendingIce = [];
@@ -116,14 +117,21 @@ class PeerConnectionManager {
     };
     pc.onTrack = (event) {
       // 只把视频流交给渲染器，音频/摄像头等其它轨道不能覆盖画面。
-      if (event.track.kind == 'video' && event.streams.isNotEmpty) {
-        _renderer?.srcObject = event.streams.first;
+      if (event.track.kind == 'video') {
+        if (event.streams.isNotEmpty) {
+          _renderer?.srcObject = event.streams.first;
+        } else {
+          // 部分服务端（如 webrtc-rs）answer 里不带 msid，event.streams 为空，
+          // 此时必须自己建一个 MediaStream 挂载轨道，否则永远黑屏。
+          unawaited(_attachRemoteTrack(event.track));
+        }
       }
       try {
         _meta.add({
           't': 'track.added',
           'kind': event.track.kind,
           'id': event.track.id,
+          'streams': event.streams.length,
         });
       } catch (_) {}
     };
@@ -146,6 +154,18 @@ class PeerConnectionManager {
   }
 
   void Function(RTCIceCandidate candidate)? onIceCandidate;
+
+  Future<void> _attachRemoteTrack(MediaStreamTrack track) async {
+    try {
+      final stream = _remoteStream ?? await createLocalMediaStream('kk-remote-remote');
+      _remoteStream = stream;
+      await stream.addTrack(track);
+      _renderer?.srcObject = stream;
+      _log('远端视频轨已挂载到独立 MediaStream');
+    } catch (error) {
+      _log('挂载远端视频轨失败: $error');
+    }
+  }
 
   Future<void> _createDataChannel(String label) async {
     final pc = _pc;
@@ -274,6 +294,9 @@ class PeerConnectionManager {
 
   int _lastBytesReceived = 0;
   int _lastBytesSent = 0;
+  int _lastFramesDecoded = 0;
+  int _framesDecodedTotal = 0;
+  DateTime? _lastFramesAt;
 
   Future<void> pollStats() async {
     if (_disposed) return;
@@ -315,7 +338,14 @@ class PeerConnectionManager {
             final packetsReceived = asInt(values['packetsReceived']);
             final total = packetsLost + packetsReceived;
             if (total > 0) lossRate = (packetsLost / total).clamp(0.0, 1.0).toDouble();
-            fps = asInt(values['framesPerSecond']);
+            final framesPerSecond = values['framesPerSecond'];
+            if (framesPerSecond is num && framesPerSecond > 0) {
+              fps = framesPerSecond.round();
+            }
+            // 部分平台不返回 framesPerSecond，用 framesDecoded 增量兜底，
+            // 否则界面永远显示"--"，也无法判断到底有没有收到画面。
+            final decoded = asInt(values['framesDecoded'] ?? values['framesReceived']);
+            if (decoded > 0) _framesDecodedTotal = decoded;
           }
           final incoming = asInt(values['bytesReceived']);
           if (incoming > 0) bytesReceived = incoming;
@@ -331,6 +361,17 @@ class PeerConnectionManager {
       }
       final deltaBytes = bytesReceived - _lastBytesReceived;
       final deltaSent = bytesSent - _lastBytesSent;
+      if (fps == 0 && _framesDecodedTotal > 0) {
+        final now = DateTime.now();
+        final previous = _lastFramesAt;
+        if (previous != null) {
+          final seconds = now.difference(previous).inMilliseconds / 1000;
+          final delta = _framesDecodedTotal - _lastFramesDecoded;
+          if (seconds > 0 && delta > 0) fps = (delta / seconds).round();
+        }
+        _lastFramesAt = now;
+        _lastFramesDecoded = _framesDecodedTotal;
+      }
       if (deltaBytes > 0) {
         final computed = (deltaBytes * 8 / 1000).round();
         if (computed > bitrateKbps) bitrateKbps = computed;
@@ -500,6 +541,10 @@ class PeerConnectionManager {
       await _renderer?.dispose();
     } catch (_) {}
     _renderer = null;
+    try {
+      await _remoteStream?.dispose();
+    } catch (_) {}
+    _remoteStream = null;
     await _control.close();
     await _file.close();
     await _chat.close();
