@@ -38,10 +38,14 @@ class _CountdownButtonState extends State<CountdownButton> {
   }
 
   void _start() {
+    if (!mounted) return;
     setState(() => _remaining = widget.seconds);
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) return;
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
         _remaining--;
         if (_remaining <= 0) timer.cancel();
@@ -54,6 +58,7 @@ class _CountdownButtonState extends State<CountdownButton> {
     setState(() => _sending = true);
     try {
       final ok = await widget.onSend();
+      if (!mounted) return;
       if (ok) _start();
     } finally {
       if (mounted) setState(() => _sending = false);
