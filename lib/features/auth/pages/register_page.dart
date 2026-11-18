@@ -128,10 +128,11 @@ class _RegisterPageState extends State<RegisterPage> {
         code: _codeController.text.trim(),
         password: _passwordController.text,
         inviteCode: _inviteController.text.trim(),
+        // 不在这里建立登录态：注册页属于公开路由，一旦 notifyListeners
+        // 会立刻被跳转到首页，成功提示与账号回填都会丢失。
+        autoLogin: false,
       );
       await context.read<SettingsProvider>().setBool(SettingsKeys.protocolAgreed, true);
-      // 注册成功后回到登录页并自动回填账号，符合移动端注册流程。
-      await auth.logout();
       if (!mounted) return;
       _showMessage('注册成功，请登录');
       context.go('/login?account=${Uri.encodeComponent(
