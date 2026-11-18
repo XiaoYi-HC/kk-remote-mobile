@@ -105,9 +105,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _session.start();
-      if (_orientationLocked) {
-        await _applyOrientationLock(true);
-      }
+      if (!mounted) return;
+      await _applyOrientation(settings.orientationLock);
     });
   }
 
@@ -124,6 +123,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (_leaving) {
       session.dispose();
     } else {
+      // 非常规退出（路由被移除等）也要先停止录制，避免原生录屏在后台持续运行。
+      if (session.recording) {
+        unawaited(session.stopRecording());
+      }
       session.endSession().whenComplete(session.dispose);
     }
     unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
@@ -223,25 +226,30 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   Future<void> _takeScreenshot() async {
     try {
+      final settings = context.read<SettingsProvider>();
       final boundary = _captureKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
       if (boundary == null) throw Exception('画面尚未就绪');
       final image = await boundary.toImage(pixelRatio: 1.6);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) throw Exception('截图编码失败');
-      final dir = await _downloadDirectory();
-      final file = File(p.join(
-        dir.path,
-        'KK远程截图_${DateTime.now().millisecondsSinceEpoch}.png',
-      ));
-      await file.writeAsBytes(byteData.buffer.asUint8List());
-      _showMessage('截图已保存：${file.path}');
+      try {
+        final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        if (byteData == null) throw Exception('截图编码失败');
+        final dir = await _downloadDirectory(settings);
+        final file = File(p.join(
+          dir.path,
+          'KK远程截图_${DateTime.now().millisecondsSinceEpoch}.png',
+        ));
+        await file.writeAsBytes(byteData.buffer.asUint8List());
+        _showMessage('截图已保存：${file.path}');
+      } finally {
+        image.dispose();
+      }
     } catch (e) {
       _showMessage('截图失败：$e');
     }
   }
 
-  Future<Directory> _downloadDirectory() async {
-    final configured = context.read<SettingsProvider>().downloadDir;
+  Future<Directory> _downloadDirectory(SettingsProvider settings) async {
+    final configured = settings.downloadDir;
     if (configured.isNotEmpty) {
       final dir = Directory(configured);
       if (!await dir.exists()) await dir.create(recursive: true);
@@ -317,35 +325,56 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Future<void> _togglePrivacy() async {
+    // 弹窗期间可能收到服务端 privacy.sync，先固定本次目标值。
+    final target = !_session.privacyBlackScreen;
     final enabled = await showPrivacyDialog(
       context,
       currentlyEnabled: _session.privacyBlackScreen,
     );
-    if (!enabled) return;
-    await _session.togglePrivacy(!_session.privacyBlackScreen);
-    _showMessage(_session.privacyBlackScreen ? '隐私黑屏已开启' : '隐私黑屏已关闭');
+    if (!enabled || !mounted) return;
+    await _session.togglePrivacy(target);
+    _showMessage(target ? '隐私黑屏已开启' : '隐私黑屏已关闭');
   }
 
   Future<void> _toggleOrientation() async {
     final next = !_orientationLocked;
+    // 与设置页共用 portrait/landscape/auto 语义：锁定当前物理方向，而不是含糊的 locked。
+    final mode = next
+        ? (MediaQuery.of(context).orientation == Orientation.portrait
+            ? 'portrait'
+            : 'landscape')
+        : 'auto';
     setState(() => _orientationLocked = next);
-    await _applyOrientationLock(next);
-    await context
-        .read<SettingsProvider>()
-        .setString(SettingsKeys.orientationLock, next ? 'locked' : 'auto');
+    await _applyOrientation(mode);
+    await context.read<SettingsProvider>().setString(SettingsKeys.orientationLock, mode);
     _showMessage(next ? '已锁定当前屏幕方向' : '已恢复自动旋转');
   }
 
-  Future<void> _applyOrientationLock(bool locked) async {
-    if (locked) {
-      final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
-      await SystemChrome.setPreferredOrientations(
-        isPortrait
-            ? [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]
-            : [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
-      );
-    } else {
-      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+  Future<void> _applyOrientation(String mode) async {
+    switch (mode) {
+      case 'portrait':
+        await SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+        break;
+      case 'landscape':
+        await SystemChrome.setPreferredOrientations(const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        break;
+      case 'locked':
+        // 兼容旧版本保存的 locked：按当前物理方向锁定。
+        final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+        await SystemChrome.setPreferredOrientations(
+          isPortrait
+              ? const [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]
+              : const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+        );
+        break;
+      default:
+        await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     }
   }
 
@@ -679,7 +708,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
   Future<void> _exportLayout() async {
     try {
-      final dir = await _downloadDirectory();
+      final settings = context.read<SettingsProvider>();
+      final dir = await _downloadDirectory(settings);
       final file = File(p.join(dir.path, 'KK远程按键布局_${DateTime.now().millisecondsSinceEpoch}.json'));
       await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_layout.toJson()));
       _showMessage('布局已导出：${file.path}');
@@ -759,6 +789,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       child: Consumer2<RemoteSessionProvider, SettingsProvider>(
         builder: (context, session, settings, _) {
           final connected = session.connected;
+          final videoWidth = session.renderer?.value.videoWidth ?? 0;
+          final videoHeight = session.renderer?.value.videoHeight ?? 0;
+          final videoAspectRatio =
+              (videoWidth > 0 && videoHeight > 0) ? videoWidth / videoHeight : null;
           return PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, result) {
@@ -778,10 +812,16 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                         child: RemoteGestureLayer(
                           inputEnabled: session.canForwardInput,
                           trackballMode: session.trackballMode,
-                          touchSensitivity: settings.touchSensitivity,
+                          touchSensitivity:
+                              settings.touchSensitivity * settings.gestureSensitivity,
                           scrollSensitivity: settings.scrollSensitivity,
                           hapticsEnabled: settings.hapticsEnabled,
-                          onMove: session.mouseMove,
+                          videoAspectRatio: videoAspectRatio,
+                          onMove: (x, y) {
+                            // 与虚拟手柄共用同一个光标坐标，避免"看到的"和"点到的"位置不一致。
+                            _virtualCursor = Offset(x, y);
+                            session.mouseMove(x, y);
+                          },
                           onLeftClick: session.leftClick,
                           onRightClick: session.rightClick,
                           onWheel: session.wheel,
