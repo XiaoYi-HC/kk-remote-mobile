@@ -72,7 +72,7 @@ final class LiquidTabBarFactory: NSObject, FlutterPlatformViewFactory {
         super.init()
     }
 
-    func createArgsCodec() -> (FlutterMessageCodec & NSObjectProtocol)? {
+    func createArgsCodec() -> (NSObjectProtocol & FlutterMessageCodec) {
         FlutterStandardMessageCodec.sharedInstance()
     }
 
