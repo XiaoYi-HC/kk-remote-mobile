@@ -9,6 +9,7 @@ import '../../../state/settings_provider.dart';
 import '../../../widgets/app_card.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/user_avatar.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../../widgets/mobile_page.dart';
 
@@ -37,22 +38,10 @@ class SettingsPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
               child: Row(
                 children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    alignment: Alignment.center,
-                    decoration: const BoxDecoration(
-                      color: AppColors.primarySoft,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      auth.displayName.characters.first,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
-                    ),
+                  UserAvatar(
+                    size: 64,
+                    avatar: auth.user?.avatar ?? '',
+                    name: auth.displayName,
                   ),
                   const SizedBox(width: 14),
                   Expanded(
