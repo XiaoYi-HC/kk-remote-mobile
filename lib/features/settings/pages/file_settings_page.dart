@@ -13,6 +13,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class FileSettingsPage extends StatefulWidget {
   const FileSettingsPage({super.key});
@@ -92,15 +93,9 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('文件与下载'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '文件与下载',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('下载目录'),
