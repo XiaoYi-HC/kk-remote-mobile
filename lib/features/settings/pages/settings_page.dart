@@ -10,6 +10,7 @@ import '../../../widgets/app_card.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../../auth/state/auth_provider.dart';
+import '../../../widgets/mobile_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -18,15 +19,9 @@ class SettingsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => context.pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('设置'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '设置',
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
           AppCard(
