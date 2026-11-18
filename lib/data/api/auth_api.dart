@@ -89,6 +89,15 @@ class AuthApi {
     return LoginResult.fromJson(asMap(data));
   }
 
+  /// 使用 refresh token 换取新的 access token（不参与自动刷新，避免递归）。
+  Future<LoginResult> refresh(String refreshToken) async {
+    final data = await _api.postWithoutRetry('/client/auth/refresh', data: {
+      'refreshToken': refreshToken,
+      'client': 'mobile',
+    });
+    return LoginResult.fromJson(asMap(data));
+  }
+
   Future<void> logout({String? refreshToken}) async {
     await _api.post('/client/auth/logout', data: {
       if (refreshToken != null) 'refreshToken': refreshToken,
