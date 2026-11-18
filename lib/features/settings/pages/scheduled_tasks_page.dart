@@ -8,11 +8,13 @@ import '../../../data/models/automation.dart';
 import '../../../data/models/device.dart';
 import '../../../state/app_services.dart';
 import '../../../widgets/app_button.dart';
+import '../../../widgets/app_select.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/app_sheet.dart';
 import '../../../widgets/app_text_field.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
+import '../../../widgets/mobile_page.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../../auth/state/auth_provider.dart';
 
@@ -127,22 +129,16 @@ class _ScheduledTasksPageState extends State<ScheduledTasksPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('定时任务'),
-        actions: [
+    return MobilePage(
+      title: '定时任务',
+      actions: [
           IconButton(
             tooltip: '添加任务',
             onPressed: _error != null && _error!.contains('登录') ? null : () => _openEditor(),
             icon: const Icon(Icons.add_rounded, size: 22),
           ),
         ],
-      ),
-      body: _loading
+      child: _loading
           ? const LoadingView()
           : _error != null
               ? EmptyState(
@@ -382,18 +378,26 @@ class _TaskFormState extends State<_TaskForm> {
             maxLength: 30,
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            value: _deviceId == 0 ? null : _deviceId,
-            decoration: const InputDecoration(labelText: '目标设备'),
-            items: widget.devices
-                .map(
-                  (device) => DropdownMenuItem(
-                    value: device.id,
-                    child: Text('${device.displayName}（${device.deviceCode}）'),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _deviceId = value ?? 0),
+          AppSelectField<int>(
+            label: '目标设备',
+            hint: '请选择目标设备',
+            valueLabel: () {
+              for (final device in widget.devices) {
+                if (device.id == _deviceId) {
+                  return '${device.displayName}（${device.deviceCode}）';
+                }
+              }
+              return '';
+            }(),
+            options: [
+              for (final device in widget.devices)
+                AppSelectOption(
+                  value: device.id,
+                  label: device.displayName,
+                  subtitle: device.deviceCode,
+                ),
+            ],
+            onChanged: (value) => setState(() => _deviceId = value),
           ),
           const SizedBox(height: 12),
           InkWell(
@@ -408,18 +412,17 @@ class _TaskFormState extends State<_TaskForm> {
             ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            value: _repeatRule,
-            decoration: const InputDecoration(labelText: '重复周期'),
-            items: AppConstants.repeatRules
-                .map(
-                  (rule) => DropdownMenuItem(
-                    value: rule,
-                    child: Text(AppConstants.repeatRuleNames[rule] ?? rule),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _repeatRule = value ?? 'none'),
+          AppSelectField<String>(
+            label: '重复周期',
+            valueLabel: AppConstants.repeatRuleNames[_repeatRule] ?? _repeatRule,
+            options: [
+              for (final rule in AppConstants.repeatRules)
+                AppSelectOption(
+                  value: rule,
+                  label: AppConstants.repeatRuleNames[rule] ?? rule,
+                ),
+            ],
+            onChanged: (value) => setState(() => _repeatRule = value),
           ),
           const SizedBox(height: 6),
           SettingsGroup(
