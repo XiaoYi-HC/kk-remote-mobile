@@ -92,7 +92,8 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
       if (!mounted) return;
       setState(() => _avatar = avatar);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('头像已上传，保存后生效')),
+        // 头像接口上传即落库，无需等"保存"。
+        const SnackBar(content: Text('头像已更新')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -103,6 +104,12 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   Future<void> _save() async {
+    if (_uploading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('头像上传中，请稍候')),
+      );
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() {
       _saving = true;
