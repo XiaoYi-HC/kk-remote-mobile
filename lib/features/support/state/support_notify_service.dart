@@ -21,6 +21,8 @@ class SupportNotifyService {
   String _token = '';
   String _wsUrl = '';
   bool _running = false;
+  bool _starting = false;
+  bool _notificationsEnabled = true;
 
   /// 进入某个会话时暂停该会话的通知，避免正在聊天还弹提醒。
   void enterConversation(int conversationId) => _viewingConversationId = conversationId;
@@ -34,16 +36,25 @@ class SupportNotifyService {
   }) async {
     if (accountId == 0 || token.isEmpty) return;
     if (_running && _accountId == accountId && _token == token) return;
-    // 切换账号时清掉上一账号遗留的通知。
-    if (_accountId != 0 && _accountId != accountId) {
-      await NotificationService.instance.cancelAll();
+    // build() 中会重复触发 start，必须做互斥，避免并发创建多个 socket。
+    if (_starting) return;
+    _starting = true;
+    try {
+      // 切换账号时清掉上一账号遗留的通知。
+      if (_accountId != 0 && _accountId != accountId) {
+        await NotificationService.instance.cancelAll();
+      }
+      await stop();
+      _accountId = accountId;
+      _token = token;
+      _wsUrl = services.supportSocketUrl;
+      // 用户关闭通知开关后不再弹客服/工单提醒。
+      _notificationsEnabled = services.settings.notificationEnabled;
+      _running = true;
+      await _connect();
+    } finally {
+      _starting = false;
     }
-    await stop();
-    _accountId = accountId;
-    _token = token;
-    _wsUrl = services.supportSocketUrl;
-    _running = true;
-    await _connect();
   }
 
   Future<void> _connect() async {
@@ -90,7 +101,7 @@ class SupportNotifyService {
           payload: {'type': 'ticket', 'ticketId': event.data['ticketId']},
         );
         break;
-      case 'support.closed':
+      case 'support.disconnected':
         _scheduleReconnect();
         break;
       default:
@@ -103,6 +114,7 @@ class SupportNotifyService {
     required String body,
     required Map<String, dynamic> payload,
   }) {
+    if (!_notificationsEnabled) return;
     NotificationService.instance.showMessage(
       title: title,
       body: body,
