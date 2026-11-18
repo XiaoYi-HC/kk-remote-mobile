@@ -356,35 +356,6 @@ class _HomePageState extends State<HomePage> {
                 SliverToBoxAdapter(
                   child: InlineError(message: devices.error!, onRetry: devices.refresh),
                 ),
-              if (!isLoggedIn)
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.warningSoft,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0x40F59E0B)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.person_outline_rounded, size: 18, color: AppColors.warning),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            '游客模式仅可临时连接，登录后可同步设备与消息',
-                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => context.go('/login'),
-                          style: TextButton.styleFrom(minimumSize: const Size(52, 32)),
-                          child: const Text('登录', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               SliverToBoxAdapter(child: _buildQuickActions()),
               SliverToBoxAdapter(child: _buildFilters(devices)),
               if (devices.loading && devices.devices.isEmpty)
@@ -508,7 +479,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildQuickActions() {
-    final auth = context.watch<AuthProvider>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Column(
@@ -549,60 +519,60 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: QuickActionCard(
-                  icon: Icons.qr_code_scanner_rounded,
-                  title: '扫码连接',
-                  subtitle: '扫描电脑二维码',
-                  onTap: () => context.push('/scan'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: QuickActionCard(
-                  icon: Icons.wifi_find_rounded,
-                  title: '局域网扫描',
-                  subtitle: '同 WiFi 直连',
-                  onTap: _openLanScan,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: QuickActionCard(
-                  icon: Icons.dialpad_rounded,
-                  title: '识别码',
-                  subtitle: '输入码连接',
-                  onTap: () => _openConnect(ConnectArgs(castMode: _castMode)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: QuickActionCard(
-                  icon: Icons.screen_share_rounded,
-                  title: '投屏模式',
-                  subtitle: _castMode ? '已开启' : '手机投到电脑',
-                  active: _castMode,
-                  onTap: () {
-                    setState(() => _castMode = !_castMode);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(_castMode ? '投屏模式已开启，请选择电脑' : '已退出投屏模式')),
-                    );
-                  },
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // 手机端两列排布，避免四张卡片挤在一行。
+              final itemWidth = (constraints.maxWidth - 10) / 2;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: itemWidth,
+                    child: QuickActionCard(
+                      icon: Icons.qr_code_scanner_rounded,
+                      title: '扫码连接',
+                      subtitle: '扫描电脑二维码',
+                      onTap: () => context.push('/scan'),
+                    ),
+                  ),
+                  SizedBox(
+                    width: itemWidth,
+                    child: QuickActionCard(
+                      icon: Icons.wifi_find_rounded,
+                      title: '局域网扫描',
+                      subtitle: '同 WiFi 直连',
+                      onTap: _openLanScan,
+                    ),
+                  ),
+                  SizedBox(
+                    width: itemWidth,
+                    child: QuickActionCard(
+                      icon: Icons.dialpad_rounded,
+                      title: '识别码',
+                      subtitle: '输入码连接',
+                      onTap: () => _openConnect(ConnectArgs(castMode: _castMode)),
+                    ),
+                  ),
+                  SizedBox(
+                    width: itemWidth,
+                    child: QuickActionCard(
+                      icon: Icons.screen_share_rounded,
+                      title: '投屏模式',
+                      subtitle: _castMode ? '已开启' : '手机投到电脑',
+                      active: _castMode,
+                      onTap: () {
+                        setState(() => _castMode = !_castMode);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(_castMode ? '投屏模式已开启，请选择电脑' : '已退出投屏模式')),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
-          if (!auth.isLoggedIn)
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () => context.go('/login'),
-                icon: const Icon(Icons.cloud_sync_outlined, size: 16),
-                label: const Text('登录后同步分组与收藏', style: TextStyle(fontSize: 11)),
-              ),
-            ),
         ],
       ),
     );
