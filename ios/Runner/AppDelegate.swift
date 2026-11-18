@@ -18,6 +18,13 @@ import GameController
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "LiquidGlassTabBarPlugin") {
+      registrar.register(
+        LiquidTabBarFactory(messenger: registrar.messenger()),
+        withId: "kk/liquid_tab_bar"
+      )
+    }
+
     let channel = FlutterMethodChannel(
       name: channelName,
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
