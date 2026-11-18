@@ -13,12 +13,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Flutter 3.24.5
+      - name: Setup Flutter 3.50.0
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.50.0'
           channel: stable
           cache: true
+
+      - name: Use CocoaPods instead of Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
 
       - name: Flutter doctor
         run: flutter doctor -v
