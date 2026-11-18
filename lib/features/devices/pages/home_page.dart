@@ -10,6 +10,7 @@ import '../../../widgets/app_sheet.dart';
 import '../../../widgets/brand_logo.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
+import '../../../widgets/user_avatar.dart';
 import '../../auth/state/auth_provider.dart';
 import '../state/connect_args.dart';
 import '../state/devices_provider.dart';
@@ -459,17 +460,10 @@ class _HomePageState extends State<HomePage> {
                 context.go('/login');
               }
             },
-            child: CircleAvatar(
-              radius: 17,
-              backgroundColor: AppColors.primarySoft,
-              child: Text(
-                auth.displayName.characters.first,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
+            child: UserAvatar(
+              size: 34,
+              avatar: auth.user?.avatar ?? '',
+              name: auth.displayName,
             ),
           ),
           const SizedBox(width: 2),
