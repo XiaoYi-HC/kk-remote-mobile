@@ -264,6 +264,7 @@ class GamepadPanel extends StatelessWidget {
     }
     if (button.isMouse) {
       return Listener(
+        behavior: HitTestBehavior.opaque,
         onPointerDown: (_) {
           if (hapticsEnabled) HapticFeedback.selectionClick();
           onMouse(button.type == 'mouseLeft' ? 'left' : 'right', true);
@@ -275,6 +276,7 @@ class GamepadPanel extends StatelessWidget {
     }
     if (button.type == 'text') {
       return GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () {
           if (button.action.isNotEmpty) {
             for (final char in button.action.split('')) {
@@ -287,6 +289,7 @@ class GamepadPanel extends StatelessWidget {
       );
     }
     return Listener(
+      behavior: HitTestBehavior.opaque,
       onPointerDown: (_) {
         if (hapticsEnabled) HapticFeedback.lightImpact();
         onKey(button.keyCode.isEmpty ? 'Key${button.label.toUpperCase()}' : button.keyCode, true);
@@ -329,6 +332,7 @@ class _JoystickButtonState extends State<_JoystickButton> {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
         final maxOffset = size.shortestSide * 0.28;
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onPanUpdate: (details) {
             final next = _knob + details.delta;
             final clamped = Offset(
