@@ -19,6 +19,9 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
   bool _collapsed = false;
 
+  /// 滚动时高光轻微偏移，模拟玻璃对运动/环境光的响应。
+  double _specularShift = 0;
+
   static const _items = [
     _TabItem(icon: Icons.home_outlined, activeIcon: Icons.home_rounded, label: '首页'),
     _TabItem(icon: Icons.desktop_windows_outlined, activeIcon: Icons.desktop_windows_rounded, label: '远程协助'),
@@ -28,11 +31,15 @@ class _HomeShellState extends State<HomeShell> {
   bool _onScroll(ScrollNotification notification) {
     if (notification is ScrollUpdateNotification) {
       final delta = notification.scrollDelta ?? 0;
-      // 向下滚动收起成小圆泡，向上滚动展开。
       if (delta > 4 && !_collapsed && notification.metrics.pixels > 48) {
         setState(() => _collapsed = true);
       } else if (delta < -4 && _collapsed) {
         setState(() => _collapsed = false);
+      }
+      // 高光随滚动方向移动，幅度很小。
+      final next = (_specularShift + delta / 40).clamp(-0.18, 0.18);
+      if ((next - _specularShift).abs() > 0.008) {
+        setState(() => _specularShift = next);
       }
     } else if (notification is ScrollEndNotification) {
       if (notification.metrics.pixels <= 16 && _collapsed) {
@@ -43,8 +50,10 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _selectTab(int value) {
-    if (_collapsed) setState(() => _collapsed = false);
-    setState(() => _index = value);
+    setState(() {
+      _collapsed = false;
+      _index = value;
+    });
   }
 
   @override
@@ -78,7 +87,7 @@ class _HomeShellState extends State<HomeShell> {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
                 child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 240),
+                  duration: const Duration(milliseconds: 260),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
                   transitionBuilder: (child, animation) => ScaleTransition(
@@ -99,6 +108,7 @@ class _HomeShellState extends State<HomeShell> {
                           key: const ValueKey('bar'),
                           items: _items,
                           index: _index,
+                          specularShift: _specularShift,
                           onChanged: _selectTab,
                         ),
                 ),
@@ -119,77 +129,142 @@ class _TabItem {
   final String label;
 }
 
-/// 液态玻璃底座：高斯模糊 + 白色渐变 + 高光描边。
+/// Liquid Glass 材质：折射（轻微放大 + 模糊）+ 高光边 + 内阴影。
 class _GlassSurface extends StatelessWidget {
   const _GlassSurface({
     required this.borderRadius,
     required this.child,
     this.height,
+    this.specularShift = 0,
+    this.prominent = false,
   });
 
   final double borderRadius;
   final Widget child;
   final double? height;
+  final double specularShift;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: Container(
-          height: height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: Colors.white.withAlpha(200), width: 0.9),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              stops: const [0, 0.45, 1],
-              colors: [
-                Colors.white.withAlpha(228),
-                Colors.white.withAlpha(176),
-                Colors.white.withAlpha(140),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0x241F2329),
-                blurRadius: 28,
-                offset: const Offset(0, 10),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
+        final h = height ?? (constraints.maxHeight.isFinite ? constraints.maxHeight : 0.0);
+        // 背景先做 1.03 倍轻微放大（折射/透镜感），再进行高斯模糊。
+        final lens = ImageFilter.matrix(
+          (Matrix4.identity()
+                ..translate(-width * 0.015, -h * 0.015)
+                ..scale(1.03))
+              .storage,
+        );
+        final filter = ImageFilter.compose(
+          outer: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+          inner: lens,
+        );
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(borderRadius),
+          child: BackdropFilter(
+            filter: filter,
+            child: Container(
+              height: height,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(borderRadius),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: prominent
+                      ? [Colors.white.withAlpha(242), Colors.white.withAlpha(206)]
+                      : [Colors.white.withAlpha(190), Colors.white.withAlpha(120)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0x221F2329),
+                    blurRadius: prominent ? 18 : 30,
+                    offset: Offset(0, prominent ? 4 : 12),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              // 顶部高光，模拟玻璃折射的亮边。
-              Positioned(
-                left: 8,
-                right: 8,
-                top: 0,
-                child: IgnorePointer(
-                  child: Container(
-                    height: 1.2,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(1),
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withAlpha(0),
-                          Colors.white.withAlpha(230),
-                          Colors.white.withAlpha(0),
-                        ],
+              child: Stack(
+                children: [
+                  // 玻璃内部的柔和折射光斑，随滚动轻微平移。
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment(-0.75 + specularShift, -1.05),
+                            radius: 1.25,
+                            colors: [
+                              Colors.white.withAlpha(150),
+                              Colors.white.withAlpha(0),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  // 边缘高光 + 内阴影，模拟 iOS 26 玻璃的立体折射。
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: CustomPaint(
+                        painter: _GlassRimPainter(
+                          radius: borderRadius,
+                          prominent: prominent,
+                        ),
+                      ),
+                    ),
+                  ),
+                  child,
+                ],
               ),
-              child,
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
+}
+
+class _GlassRimPainter extends CustomPainter {
+  const _GlassRimPainter({required this.radius, required this.prominent});
+
+  final double radius;
+  final bool prominent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+
+    // 渐变描边：左上强高光 → 右下淡边。
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.1
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        stops: const [0, 0.32, 0.72, 1],
+        colors: [
+          Colors.white.withAlpha(prominent ? 255 : 235),
+          Colors.white.withAlpha(prominent ? 190 : 120),
+          Colors.white.withAlpha(60),
+          Colors.white.withAlpha(prominent ? 220 : 160),
+        ],
+      ).createShader(rect);
+    canvas.drawRRect(rrect.deflate(0.7), stroke);
+
+    // 内侧暗边，增加厚度感。
+    final inner = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = const Color(0x12000000);
+    canvas.drawRRect(rrect.deflate(2.2), inner);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlassRimPainter oldDelegate) =>
+      oldDelegate.radius != radius || oldDelegate.prominent != prominent;
 }
 
 /// 展开态的悬浮标签栏。
@@ -198,18 +273,21 @@ class _LiquidGlassTabBar extends StatelessWidget {
     super.key,
     required this.items,
     required this.index,
+    required this.specularShift,
     required this.onChanged,
   });
 
   final List<_TabItem> items;
   final int index;
+  final double specularShift;
   final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return _GlassSurface(
-      borderRadius: 30,
+      borderRadius: 31,
       height: 62,
+      specularShift: specularShift,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
         child: Row(
@@ -246,6 +324,7 @@ class _GlassBubbleButton extends StatelessWidget {
         child: _GlassSurface(
           borderRadius: 27,
           height: 54,
+          prominent: true,
           child: SizedBox(
             width: 54,
             child: Center(
@@ -279,15 +358,27 @@ class _TabButton extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            color: selected ? Colors.white.withAlpha(235) : Colors.transparent,
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(25),
+            gradient: selected
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withAlpha(250),
+                      Colors.white.withAlpha(215),
+                    ],
+                  )
+                : null,
+            border: selected
+                ? Border.all(color: Colors.white.withAlpha(230), width: 0.9)
+                : null,
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: const Color(0x141F2329),
+                      color: const Color(0x1A1F2329),
                       blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
