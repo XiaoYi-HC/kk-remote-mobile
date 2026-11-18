@@ -41,6 +41,7 @@ class AuthProvider extends ChangeNotifier {
   String? _error;
   UserProfile? _user;
   String _pending2faTicket = '';
+  int _sessionGeneration = 0;
 
   String get accessToken => _accessToken;
   String get refreshToken => _refreshToken;
@@ -91,7 +92,10 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
     }
     try {
+      final generation = _sessionGeneration;
       final result = await _accountApi.profile();
+      // 请求期间已退出登录/切换账号时，不能再把旧资料写回缓存。
+      if (generation != _sessionGeneration || _accessToken.isEmpty) return;
       if (result.user != null) {
         _user = result.user!.copyWith(unreadMessages: result.unreadMessages);
         await _store.setMap(_userKey, _userToJson(_user!));
@@ -147,15 +151,37 @@ class AuthProvider extends ChangeNotifier {
     required String code,
     required String password,
     String? inviteCode,
+    bool autoLogin = true,
   }) async {
-    return _doLogin(() => _authApi.register(
-          method: method,
-          phone: phone.trim(),
-          email: email.trim(),
-          code: code.trim(),
-          password: password,
-          inviteCode: inviteCode,
-        ));
+    _setLoading(true);
+    try {
+      final result = await _authApi.register(
+        method: method,
+        phone: phone.trim(),
+        email: email.trim(),
+        code: code.trim(),
+        password: password,
+        inviteCode: inviteCode,
+      );
+      if (result.need2fa) {
+        _pending2faTicket = result.ticket;
+        _error = null;
+        return result;
+      }
+      if (autoLogin) {
+        await _applyLogin(result);
+      } else {
+        // 注册页需要回到登录页手动登录，不能在这里写入登录态，
+        // 否则路由会立刻把注册页重定向到首页并吞掉成功提示。
+        _error = null;
+      }
+      return result;
+    } on ApiException catch (error) {
+      _error = error.message;
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
   }
 
   Future<void> loginAsGuest() async {
@@ -210,7 +236,7 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> oauthLogin({
+  Future<LoginResult> oauthLogin({
     required String provider,
     required String code,
     required String state,
@@ -220,15 +246,20 @@ class AuthProvider extends ChangeNotifier {
       final result = await _authApi.oauthCallback(provider: provider, code: code, state: state);
       if (result.need2fa) {
         _pending2faTicket = result.ticket;
-        return;
+        _error = null;
+        return result;
       }
       await _applyLogin(result);
+      return result;
     } finally {
       _setLoading(false);
     }
   }
 
+  bool get pending2fa => _pending2faTicket.isNotEmpty;
+
   Future<void> _applyLogin(LoginResult result) async {
+    _pending2faTicket = '';
     _accessToken = result.accessToken;
     _refreshToken = result.refreshToken;
     _isGuest = result.guest;
@@ -261,9 +292,15 @@ class AuthProvider extends ChangeNotifier {
   /// access token 过期时用 refresh token 续期；失败返回 null，由调用方触发登出。
   Future<String?> refreshAccessToken() async {
     if (_refreshToken.isEmpty) return null;
+    final generation = _sessionGeneration;
+    final refreshing = _refreshToken;
     try {
-      final result = await _authApi.refresh(_refreshToken);
+      final result = await _authApi.refresh(refreshing);
       if (result.accessToken.isEmpty) return null;
+      // 刷新期间用户已退出登录或换号，丢弃这次续期结果，避免"退出后又自动登录"。
+      if (generation != _sessionGeneration || _refreshToken != refreshing) {
+        return null;
+      }
       _accessToken = result.accessToken;
       if (result.refreshToken.isNotEmpty) {
         _refreshToken = result.refreshToken;
@@ -280,6 +317,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout({bool callApi = true}) async {
+    _sessionGeneration++;
     if (callApi && _accessToken.isNotEmpty) {
       try {
         await _authApi.logout(refreshToken: _refreshToken);
@@ -293,13 +331,18 @@ class AuthProvider extends ChangeNotifier {
     _user = null;
     _pending2faTicket = '';
     _api.setToken(null);
-    await _store.remove(_tokenKey);
-    await _store.remove(_refreshKey);
-    await _store.setBool(_guestKey, false);
-    await _store.remove(_userKey);
-    // 清理该账号的本地通知，避免切换账号后串消息。
-    await NotificationService.instance.cancelAll();
-    notifyListeners();
+    try {
+      await _store.remove(_tokenKey);
+      await _store.remove(_refreshKey);
+      await _store.setBool(_guestKey, false);
+      await _store.remove(_userKey);
+      // 清理该账号的本地通知，避免切换账号后串消息。
+      await NotificationService.instance.cancelAll();
+    } catch (_) {
+      // 本地清理失败也必须通知路由退出，否则会停留在已登录界面持续 401。
+    } finally {
+      notifyListeners();
+    }
   }
 
   Future<void> _handleUnauthorized() async {
