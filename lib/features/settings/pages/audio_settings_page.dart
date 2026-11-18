@@ -5,6 +5,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class AudioSettingsPage extends StatelessWidget {
   const AudioSettingsPage({super.key});
@@ -12,15 +13,9 @@ class AudioSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('音频'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '音频',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('远程声音'),
