@@ -37,6 +37,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _agreed = false;
   bool _preferCode = true;
+  bool _emailMode = false;
   String? _inlineError;
 
   @override
@@ -47,6 +48,7 @@ class _LoginPageState extends State<LoginPage> {
       _preferCode = false;
     }
     _agreed = context.read<SettingsProvider>().protocolAgreed;
+    _emailMode = widget.initialAccount.contains('@');
     // 冷启动时后端配置可能尚未返回：进入登录页后自动补拉一次，
     // 避免先按默认值展示后台已关闭的登录方式。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,21 +69,27 @@ class _LoginPageState extends State<LoginPage> {
 
   /// 后台开关决定可用的登录方式；两种都可用时跟随用户选择。
   bool _useCodeMode(ConfigProvider config) {
-    final phone = config.loginEnabled('phone');
+    final codeEnabled =
+        config.loginEnabled('phone') || config.loginEnabled('email');
     final password = config.loginEnabled('password');
-    if (phone && password) return _preferCode;
-    return phone;
+    if (codeEnabled && password) return _preferCode;
+    return codeEnabled;
   }
 
   Future<bool> _sendCode() async {
-    final phone = _phoneController.text.trim();
-    final error = Validators.phone(phone);
+    final value = _phoneController.text.trim();
+    final error = _emailMode ? Validators.email(value) : Validators.phone(value);
     if (error != null) {
       setState(() => _inlineError = error);
       return false;
     }
     try {
-      await context.read<AppServices>().authApi.sendSms(phone: phone, scene: 'login');
+      final api = context.read<AppServices>().authApi;
+      if (_emailMode) {
+        await api.sendEmail(email: value, scene: 'login');
+      } else {
+        await api.sendSms(phone: value, scene: 'login');
+      }
       if (!mounted) return true;
       _showMessage('验证码已发送，请注意查收');
       setState(() => _inlineError = null);
@@ -95,13 +103,15 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginByCode() async {
     if (!_validateAgreement()) return;
+    if (context.read<AuthProvider>().loading) return;
     if (!(_phoneFormKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
     try {
-      final result = await auth.loginPhone(
-        phone: _phoneController.text.trim(),
-        code: _codeController.text.trim(),
-      );
+      final account = _phoneController.text.trim();
+      final code = _codeController.text.trim();
+      final result = _emailMode
+          ? await auth.loginEmail(email: account, code: code)
+          : await auth.loginPhone(phone: account, code: code);
       if (!mounted || result == null) return;
       if (result.need2fa) {
         await _show2faDialog(auth);
@@ -115,6 +125,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loginByPassword() async {
     if (!_validateAgreement()) return;
+    if (context.read<AuthProvider>().loading) return;
     if (!(_passwordFormKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
     try {
@@ -155,10 +166,12 @@ class _LoginPageState extends State<LoginPage> {
             TextField(
               controller: controller,
               autofocus: true,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              maxLength: 6,
-              decoration: const InputDecoration(hintText: '6 位动态码', counterText: ''),
+              keyboardType: TextInputType.visiblePassword,
+              maxLength: 32,
+              decoration: const InputDecoration(
+                hintText: '6 位动态码或恢复码',
+                counterText: '',
+              ),
             ),
           ],
         ),
@@ -175,7 +188,11 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
     );
-    if (code == null || code.isEmpty) return;
+    if (code == null || code.isEmpty) {
+      controller.dispose();
+      return;
+    }
+    controller.dispose();
     try {
       await auth.verify2fa(code);
       await _afterLogin(auth);
@@ -213,8 +230,18 @@ class _LoginPageState extends State<LoginPage> {
         maxLength: 512,
       );
       if (code == null || code.isEmpty) return;
-      await auth.oauthLogin(provider: channel.provider, code: code, state: state);
-      if (mounted) context.go('/home');
+      final result = await auth.oauthLogin(
+        provider: channel.provider,
+        code: code,
+        state: state,
+      );
+      if (!mounted) return;
+      if (result.need2fa) {
+        // 第三方账号开启了两步验证：必须继续走动态码校验，不能直接跳首页。
+        await _show2faDialog(auth);
+        return;
+      }
+      if (auth.isLoggedIn) context.go('/home');
     } catch (e) {
       if (mounted) setState(() => _inlineError = e.toString());
     }
@@ -291,9 +318,10 @@ class _LoginPageState extends State<LoginPage> {
       return _buildConfigPlaceholder(config);
     }
     final phoneEnabled = config.loginEnabled('phone');
+    final emailEnabled = config.loginEnabled('email');
     final passwordEnabled = config.loginEnabled('password');
     final useCode = _useCodeMode(config);
-    final noMethod = !phoneEnabled && !passwordEnabled;
+    final noMethod = !phoneEnabled && !emailEnabled && !passwordEnabled;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
@@ -323,7 +351,7 @@ class _LoginPageState extends State<LoginPage> {
             style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),
-          if (phoneEnabled && passwordEnabled) ...[
+          if ((phoneEnabled || emailEnabled) && passwordEnabled) ...[
             _ModeSwitch(
               useCode: useCode,
               onChanged: (value) {
@@ -342,7 +370,9 @@ class _LoginPageState extends State<LoginPage> {
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               alignment: Alignment.topCenter,
-              child: useCode ? _buildCodeForm() : _buildPasswordForm(),
+              child: useCode
+                  ? _buildCodeForm(phoneEnabled: phoneEnabled, emailEnabled: emailEnabled)
+                  : _buildPasswordForm(),
             ),
           if (_inlineError != null) ...[
             const SizedBox(height: 14),
@@ -365,7 +395,12 @@ class _LoginPageState extends State<LoginPage> {
           const SizedBox(height: 14),
           _AgreementRow(
             agreed: _agreed,
-            onChanged: (value) => setState(() => _agreed = value),
+            onChanged: (value) => setState(() {
+              _agreed = value;
+              if (value && _inlineError == '请先阅读并同意《用户协议》《隐私政策》') {
+                _inlineError = null;
+              }
+            }),
             onUserProtocol: () => _showProtocol('user'),
             onPrivacy: () => _showProtocol('privacy'),
           ),
@@ -488,24 +523,54 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildCodeForm() {
+  Widget _buildCodeForm({required bool phoneEnabled, required bool emailEnabled}) {
+    final useEmail = emailEnabled && (_emailMode || !phoneEnabled);
     return Form(
       key: _phoneFormKey,
       child: Column(
         children: [
+          if (phoneEnabled && emailEnabled)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  setState(() {
+                    _emailMode = !_emailMode;
+                    _inlineError = null;
+                    _phoneController.clear();
+                    _codeController.clear();
+                  });
+                },
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(44, 32),
+                  padding: EdgeInsets.zero,
+                  foregroundColor: AppColors.primary,
+                ),
+                child: Text(
+                  useEmail ? '改用手机号登录' : '改用邮箱登录',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
           AppTextField(
             controller: _phoneController,
-            label: '手机号',
-            hint: '请输入手机号',
-            prefixText: '+86  ',
-            keyboardType: TextInputType.phone,
+            label: useEmail ? '邮箱' : '手机号',
+            hint: useEmail ? '请输入邮箱' : '请输入手机号',
+            prefixText: useEmail ? null : '+86  ',
+            keyboardType:
+                useEmail ? TextInputType.emailAddress : TextInputType.phone,
             textInputAction: TextInputAction.next,
-            inputFormatters: [
-              FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(11),
-            ],
-            validator: Validators.phone,
-            autofillHints: const [AutofillHints.telephoneNumber],
+            inputFormatters: useEmail
+                ? null
+                : [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(11),
+                  ],
+            validator: useEmail ? Validators.email : Validators.phone,
+            autofillHints: useEmail
+                ? const [AutofillHints.email]
+                : const [AutofillHints.telephoneNumber],
             onChanged: (_) {
               if (_inlineError != null) setState(() => _inlineError = null);
             },
@@ -757,7 +822,9 @@ class _ThirdPartyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final glyph = AppConstants.providerGlyphs[channel.provider] ?? channel.name.characters.first;
+    final fallbackName = channel.name.trim();
+    final glyph = AppConstants.providerGlyphs[channel.provider] ??
+        (fallbackName.isEmpty ? '·' : fallbackName.characters.first);
     final isApple = channel.provider == 'apple';
     return Semantics(
       button: true,
