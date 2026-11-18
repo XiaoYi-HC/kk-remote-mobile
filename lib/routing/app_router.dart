@@ -18,12 +18,12 @@ import '../features/auth/pages/register_page.dart';
 import '../features/auth/state/auth_provider.dart';
 import '../features/devices/pages/connect_page.dart';
 import '../features/devices/pages/device_detail_page.dart';
-import '../features/devices/pages/home_page.dart';
 import '../features/devices/pages/scan_page.dart';
 import '../features/devices/state/connect_args.dart';
 import '../features/files/pages/remote_files_page.dart';
 import '../features/remote/pages/remote_page.dart';
 import '../features/remote/state/remote_args.dart';
+import '../features/shell/pages/home_shell.dart';
 import '../features/settings/pages/about_page.dart';
 import '../features/settings/pages/accessibility_page.dart';
 import '../features/settings/pages/audio_settings_page.dart';
@@ -70,7 +70,7 @@ GoRouter buildRouter(AuthProvider auth) {
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordPage(),
       ),
-      GoRoute(path: '/home', builder: (context, state) => const HomePage()),
+      GoRoute(path: '/home', builder: (context, state) => const HomeShell()),
       GoRoute(
         path: '/connect',
         builder: (context, state) {
