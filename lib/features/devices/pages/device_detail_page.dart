@@ -68,7 +68,10 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
     }
   }
 
+  bool _unbinding = false;
+
   Future<void> _unbind() async {
+    if (_unbinding) return;
     final device = _device;
     if (device == null) return;
     final confirmed = await showConfirmDialog(
@@ -79,12 +82,15 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
       danger: true,
     );
     if (!confirmed) return;
+    setState(() => _unbinding = true);
     try {
       await context.read<DevicesProvider>().unbind(device);
       if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _unbinding = false);
     }
   }
 
@@ -188,7 +194,7 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                           child: AppSecondaryButton(
                             label: '远程连接',
                             icon: Icons.cast_connected_rounded,
-                            onPressed: () => context.pushReplacement(
+                            onPressed: () => context.push(
                               '/connect',
                               extra: ConnectArgs(
                                 deviceCode: device.deviceCode,
@@ -426,16 +432,12 @@ class _AccessRuleFormState extends State<_AccessRuleForm> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        MediaQuery.of(context).viewInsets.bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
           AppTextField(
             controller: _userIdController,
             label: '主控账号 ID',
@@ -482,7 +484,8 @@ class _AccessRuleFormState extends State<_AccessRuleForm> {
               }
             },
           ),
-        ],
+          ],
+        ),
       ),
     );
   }
