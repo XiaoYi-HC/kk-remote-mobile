@@ -546,11 +546,16 @@ class _DownloadsView extends StatefulWidget {
 }
 
 class _DownloadsViewState extends State<_DownloadsView> {
+  Future<int>? _cacheFuture;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<RemoteFileProvider>().refreshDownloads();
+      if (!mounted) return;
+      final files = context.read<RemoteFileProvider>();
+      files.refreshDownloads();
+      setState(() => _cacheFuture = files.cacheSize());
     });
   }
 
@@ -558,7 +563,7 @@ class _DownloadsViewState extends State<_DownloadsView> {
   Widget build(BuildContext context) {
     final files = context.watch<RemoteFileProvider>();
     return FutureBuilder<int>(
-      future: files.cacheSize(),
+      future: _cacheFuture ??= files.cacheSize(),
       builder: (context, snapshot) {
         final total = snapshot.data ?? 0;
         return Column(
@@ -628,7 +633,15 @@ class _DownloadsViewState extends State<_DownloadsView> {
                       ),
                       itemBuilder: (context, index) {
                         final entity = files.localDownloads[index];
-                        final stat = entity.statSync();
+                        int size = 0;
+                        DateTime? modified;
+                        try {
+                          final stat = entity.statSync();
+                          size = stat.size;
+                          modified = stat.modified;
+                        } catch (_) {
+                          // 文件可能已被外部删除，渲染时不再阻塞整页。
+                        }
                         final name = entity.uri.pathSegments.last;
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -640,7 +653,9 @@ class _DownloadsViewState extends State<_DownloadsView> {
                             style: const TextStyle(fontSize: 13),
                           ),
                           subtitle: Text(
-                            '${Formatters.bytes(stat.size)} · ${Formatters.shortDate(stat.modified)}',
+                            modified == null
+                                ? Formatters.bytes(size)
+                                : '${Formatters.bytes(size)} · ${Formatters.shortDate(modified)}',
                             style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
                           ),
                           trailing: IconButton(
