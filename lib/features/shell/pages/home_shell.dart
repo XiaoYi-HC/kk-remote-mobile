@@ -52,19 +52,10 @@ class _HomeShellState extends State<HomeShell> {
   bool _onScroll(ScrollNotification notification) {
     if (notification is ScrollUpdateNotification) {
       final delta = notification.scrollDelta ?? 0;
-      if (delta > 4 && !_collapsed && notification.metrics.pixels > 48) {
-        setState(() => _collapsed = true);
-      } else if (delta < -4 && _collapsed) {
-        setState(() => _collapsed = false);
-      }
-      // 高光随滚动方向移动，幅度很小。
+      // 标签栏保持常驻，不再随滚动收起；仅保留轻微的高光位移。
       final next = (_specularShift + delta / 40).clamp(-0.18, 0.18);
       if ((next - _specularShift).abs() > 0.008) {
         setState(() => _specularShift = next);
-      }
-    } else if (notification is ScrollEndNotification) {
-      if (notification.metrics.pixels <= 16 && _collapsed) {
-        setState(() => _collapsed = false);
       }
     }
     return false;
@@ -130,17 +121,8 @@ class _HomeShellState extends State<HomeShell> {
                     alignment: Alignment.bottomRight,
                     child: FadeTransition(opacity: animation, child: child),
                   ),
-                  child: _collapsed
-                      ? Align(
-                          key: const ValueKey('bubble'),
-                          alignment: Alignment.centerRight,
-                          child: _GlassBubbleButton(
-                            item: _items[_index],
-                            onTap: () => setState(() => _collapsed = false),
-                          ),
-                        )
-                      : nativeBar
-                          ? NativeLiquidGlassTabBar(
+                  child: nativeBar
+                      ? NativeLiquidGlassTabBar(
                               key: const ValueKey('native-bar'),
                               index: _index,
                               items: const [
