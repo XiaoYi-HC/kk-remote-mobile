@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -8,6 +9,9 @@ import '../utils/json_utils.dart';
 import 'api_exception.dart';
 
 typedef UnauthorizedHandler = Future<void> Function();
+
+/// 刷新 access token 的回调：成功返回新的 access token，失败返回 null。
+typedef TokenRefreshHandler = Future<String?> Function();
 
 /// 统一 REST 客户端：处理 BaseURL、鉴权头、统一响应结构与错误映射。
 class ApiClient {
@@ -42,6 +46,8 @@ class ApiClient {
   String _baseUrl;
   String? _token;
   UnauthorizedHandler? onUnauthorized;
+  TokenRefreshHandler? onRefreshToken;
+  Future<bool>? _refreshInFlight;
 
   String get baseUrl => _baseUrl;
   String? get token => _token;
@@ -96,23 +102,38 @@ class ApiClient {
     return _send('DELETE', path, data: data, query: query);
   }
 
-  Future<dynamic> _send(
-    String method,
-    String path, {
-    Object? data,
-    Map<String, dynamic>? query,
-  }) async {
+  /// 不触发自动刷新与登出的请求（用于刷新令牌等场景，避免递归）。
+  Future<dynamic> postWithoutRetry(String path, {Object? data}) async {
     try {
       final response = await _dio.request<dynamic>(
         path,
         data: data,
-        queryParameters: query,
-        options: Options(method: method),
+        options: Options(method: 'POST'),
       );
       return _unwrap(response);
     } on DioException catch (error) {
       throw _mapDioError(error);
     }
+  }
+
+  Future<dynamic> _send(
+    String method,
+    String path, {
+    Object? data,
+    Map<String, dynamic>? query,
+  }) {
+    // access token 过期（2h）时自动用 refresh token 续期并重试，避免直接退出登录。
+    return _withAuthRetry(
+      () async {
+        final response = await _dio.request<dynamic>(
+          path,
+          data: data,
+          queryParameters: query,
+          options: Options(method: method),
+        );
+        return _unwrap(response);
+      },
+    );
   }
 
   Future<Map<String, dynamic>> uploadFile(
@@ -121,25 +142,83 @@ class ApiClient {
     String field = 'file',
     Map<String, dynamic>? fields,
     void Function(int sent, int total)? onSendProgress,
+  }) {
+    return _withAuthRetry(
+      () async {
+        final form = FormData();
+        form.files.add(MapEntry(field, await MultipartFile.fromFile(filePath)));
+        if (fields != null) {
+          for (final entry in fields.entries) {
+            form.fields.add(MapEntry(entry.key, entry.value.toString()));
+          }
+        }
+        final response = await _dio.post<dynamic>(
+          path,
+          data: form,
+          onSendProgress: onSendProgress,
+        );
+        return asMap(_unwrap(response));
+      },
+    );
+  }
+
+  /// 统一处理鉴权失效：先尝试刷新 token 并重试一次，失败才通知外部登出。
+  Future<T> _withAuthRetry<T>(
+    Future<T> Function() run, {
+    bool retried = false,
   }) async {
     try {
-      final form = FormData();
-      form.files.add(MapEntry(field, await MultipartFile.fromFile(filePath)));
-      if (fields != null) {
-        for (final entry in fields.entries) {
-          form.fields.add(MapEntry(entry.key, entry.value.toString()));
-        }
+      return await run();
+    } on ApiException catch (error) {
+      if (error.code != 1002) rethrow;
+      if (!retried && await _tryRefreshToken()) {
+        return _withAuthRetry(run, retried: true);
       }
-      final response = await _dio.post<dynamic>(
-        path,
-        data: form,
-        onSendProgress: onSendProgress,
-      );
-      final data = _unwrap(response);
-      return asMap(data);
+      _notifyUnauthorized();
+      rethrow;
     } on DioException catch (error) {
+      if (_isUnauthorizedError(error)) {
+        if (!retried && await _tryRefreshToken()) {
+          return _withAuthRetry(run, retried: true);
+        }
+        _notifyUnauthorized();
+      }
       throw _mapDioError(error);
     }
+  }
+
+  bool _isUnauthorizedError(DioException error) {
+    if (error.response?.statusCode == 401) return true;
+    final body = error.response?.data;
+    if (body is Map) {
+      return asInt(asMap(body)['code'], fallback: 0) == 1002;
+    }
+    return false;
+  }
+
+  Future<bool> _tryRefreshToken() {
+    final handler = onRefreshToken;
+    if (handler == null) return Future<bool>.value(false);
+    return _refreshInFlight ??= _doRefresh(handler);
+  }
+
+  Future<bool> _doRefresh(TokenRefreshHandler handler) async {
+    try {
+      final token = await handler();
+      if (token == null || token.isEmpty) return false;
+      _token = token;
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      _refreshInFlight = null;
+    }
+  }
+
+  void _notifyUnauthorized() {
+    final handler = onUnauthorized;
+    if (handler == null) return;
+    unawaited(handler());
   }
 
   dynamic _unwrap(Response<dynamic> response) {
@@ -150,9 +229,6 @@ class ApiClient {
       if (map.containsKey('code')) {
         if (code == 0) return map['data'];
         final message = asString(map['message'], fallback: '请求失败');
-        if (code == 1002) {
-          onUnauthorized?.call();
-        }
         throw ApiException(
           message,
           code: code,
@@ -176,9 +252,6 @@ class ApiClient {
       final map = asMap(response.data);
       if (map.containsKey('code') || map.containsKey('message')) {
         final code = asInt(map['code'], fallback: -1);
-        if (code == 1002) {
-          onUnauthorized?.call();
-        }
         return ApiException(
           asString(map['message'], fallback: _statusMessage(response.statusCode ?? 500)),
           code: code,
