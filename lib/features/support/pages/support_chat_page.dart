@@ -24,7 +24,7 @@ class SupportChatPage extends StatefulWidget {
   State<SupportChatPage> createState() => _SupportChatPageState();
 }
 
-class _SupportChatPageState extends State<SupportChatPage> {
+class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingObserver {
   late final SupportChatController _chat;
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -34,13 +34,25 @@ class _SupportChatPageState extends State<SupportChatPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _chat = SupportChatController(services: context.read<AppServices>());
     _chat.addListener(_onChatChanged);
     _chat.init();
   }
 
+  /// 键盘弹出/收起时保持列表滚到底部，输入框跟随键盘。
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    });
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     SupportNotifyService.instance.leaveConversation();
     _chat.removeListener(_onChatChanged);
     _chat.dispose();
@@ -199,6 +211,7 @@ class _SupportChatPageState extends State<SupportChatPage> {
     final conversation = _chat.conversation;
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         leading: IconButton(
           onPressed: () => context.pop(),
@@ -315,7 +328,9 @@ class _SupportChatPageState extends State<SupportChatPage> {
   Widget _buildInputBar() {
     final enabled = _chat.conversation != null && !_chat.conversation!.isClosed;
     return Container(
-      padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).viewInsets.bottom + 8),
+      // 键盘避让由 Scaffold(resizeToAvoidBottomInset) 负责，这里不能再叠加 viewInsets，
+      // 否则会出现输入框被顶到页面上方、聊天记录被挤掉的问题。
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: const BoxDecoration(color: AppColors.background),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
