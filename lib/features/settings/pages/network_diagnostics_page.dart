@@ -15,6 +15,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../data/models/automation.dart';
 import '../../../state/app_services.dart';
 import '../../../widgets/app_button.dart';
+import '../../../widgets/mobile_page.dart';
 
 class NetworkDiagnosticsPage extends StatefulWidget {
   const NetworkDiagnosticsPage({super.key});
@@ -199,22 +200,16 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
   Widget build(BuildContext context) {
     final latency = _report['signalingLatencyMs'];
     final natType = _report['natType']?.toString() ?? '--';
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('网络诊断'),
-        actions: [
+    return MobilePage(
+      title: '网络诊断',
+      actions: [
           IconButton(
             tooltip: '复制报告',
             onPressed: _report.isEmpty ? null : _copyReport,
             icon: const Icon(Icons.copy_rounded, size: 19),
           ),
         ],
-      ),
-      body: ListView(
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Container(
