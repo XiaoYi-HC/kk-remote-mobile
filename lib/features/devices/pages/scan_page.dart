@@ -66,6 +66,7 @@ class _ScanPageState extends State<ScanPage>
   String? _hint;
   Timer? _hintTimer;
   DateTime _lastHintAt = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _awaitingSettings = false;
 
   @override
   void initState() {
@@ -75,24 +76,22 @@ class _ScanPageState extends State<ScanPage>
     _bootstrap();
   }
 
-  /// 进入页面立刻申请相机权限，授权成功后再启动摄像头。
+  /// 进入页面立刻申请相机权限。
+  ///
+  /// 这里直接由 mobile_scanner 调用系统相机授权（AVCaptureDevice），
+  /// 不依赖 permission_handler 的 iOS 权限宏配置，避免出现“永远拒绝且在设置里看不到开关”的问题。
   Future<void> _bootstrap() async {
-    final status = await Permission.camera.request();
-    if (!mounted) return;
-    if (!status.isGranted) {
-      setState(() {
-        _permissionDenied = true;
-        _starting = false;
-      });
-      return;
-    }
-    setState(() => _permissionDenied = false);
     try {
       await _controller.start();
     } catch (_) {
       // 具体错误会通过 controller 状态回传。
     }
-    if (mounted) setState(() => _starting = false);
+    if (!mounted) return;
+    setState(() {
+      _starting = false;
+      _permissionDenied =
+          _controller.value.error?.errorCode == MobileScannerErrorCode.permissionDenied;
+    });
   }
 
   @override
@@ -111,6 +110,14 @@ class _ScanPageState extends State<ScanPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从系统设置返回后重建页面，让相机以最新权限状态重新初始化。
+    if (state == AppLifecycleState.resumed && _awaitingSettings) {
+      _awaitingSettings = false;
+      if (_permissionDenied && mounted) {
+        context.pushReplacement('/scan');
+      }
+      return;
+    }
     // 退到后台时主动停流，回到前台再恢复。
     if (_handled || _permissionDenied) return;
     if (state == AppLifecycleState.inactive ||
@@ -254,26 +261,16 @@ class _ScanPageState extends State<ScanPage>
   }
 
   Future<void> _retryCamera() async {
+    if (_permissionDenied) {
+      // iOS 首次拒绝后系统不会再次弹窗，只能引导用户去设置里开启。
+      _awaitingSettings = true;
+      await openAppSettings();
+      return;
+    }
     setState(() {
       _starting = true;
       _cameraError = null;
     });
-    final status = await Permission.camera.request();
-    if (!mounted) return;
-    if (status.isPermanentlyDenied) {
-      setState(() => _starting = false);
-      await openAppSettings();
-      return;
-    }
-    if (!status.isGranted) {
-      setState(() {
-        _starting = false;
-        _permissionDenied = true;
-      });
-      _showHint('未获得相机权限', force: true);
-      return;
-    }
-    setState(() => _permissionDenied = false);
     try {
       await _controller.start();
     } catch (_) {
