@@ -166,15 +166,20 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
           ],
         ),
       ),
-      body: _loading
-          ? const LoadingView()
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                _buildRecords(),
-                _buildLocalFiles(),
-              ],
-            ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: _loading
+              ? const LoadingView()
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildRecords(),
+                    _buildLocalFiles(),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 
