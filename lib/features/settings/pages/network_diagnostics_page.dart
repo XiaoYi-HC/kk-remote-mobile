@@ -61,8 +61,10 @@ class _NetworkDiagnosticsPageState extends State<NetworkDiagnosticsPage> {
     final services = context.read<AppServices>();
     try {
       final config = await services.automationApi.networkDiagnosticsConfig();
+      if (!mounted) return;
       setState(() => _stage = '测试信令延迟…');
       final signalingLatency = await _measureSignaling(config);
+      if (!mounted) return;
       setState(() => _stage = '探测 NAT 与 ICE 候选…');
       final ice = await _probeIce(config);
       final network = _labelFor(await Connectivity().checkConnectivity());
