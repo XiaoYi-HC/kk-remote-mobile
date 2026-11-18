@@ -13,6 +13,9 @@ class SupportChatController extends ChangeNotifier {
   final AppServices services;
   final SupportSocket _socket = SupportSocket();
   StreamSubscription<SupportSocketEvent>? _socketSub;
+  Timer? _typingTimer;
+  Timer? _socketReconnectTimer;
+  bool _disposed = false;
 
   SupportConversation? conversation;
   List<SupportMessage> messages = [];
@@ -41,6 +44,7 @@ class SupportChatController extends ChangeNotifier {
   bool historyExhausted = false;
   bool _historyListLoaded = false;
   final List<SupportConversation> _historyConversations = [];
+  final Set<int> _historyMessageIds = {};
   int _historyCursor = 0;
 
   int _currentConversationId = 0;
@@ -55,7 +59,10 @@ class SupportChatController extends ChangeNotifier {
     historyExhausted = false;
     _historyListLoaded = false;
     _historyConversations.clear();
+    _historyMessageIds.clear();
     _historyCursor = 0;
+    _typingTimer?.cancel();
+    agentTyping = false;
     error = null;
     notifyListeners();
     try {
@@ -103,6 +110,9 @@ class SupportChatController extends ChangeNotifier {
           .where((item) => !item.isSystem)
           .toList();
       if (older.isNotEmpty) {
+        for (final item in older) {
+          if (item.id > 0) _historyMessageIds.add(item.id);
+        }
         messages = [...older, ...messages];
       }
       if (_historyCursor >= _historyConversations.length) {
@@ -124,11 +134,13 @@ class SupportChatController extends ChangeNotifier {
         wsBaseUrl: services.supportSocketUrl,
         token: services.api.token!,
       );
+      if (_disposed) return;
       socketReady = true;
       _socket.markRead(conversationId);
     } catch (e) {
       socketReady = false;
       if (kDebugMode) debugPrint('support socket connect failed: $e');
+      _scheduleSocketReconnect();
     }
     notifyListeners();
   }
@@ -157,8 +169,9 @@ class SupportChatController extends ChangeNotifier {
         break;
       case 'support.claimed':
         final name = asString(event.data['agentName'], fallback: '人工客服');
+        final agentId = asInt(event.data['agentId']);
         conversation = conversation?.copyWith(
-          agentId: asInt(event.data['agentId']),
+          agentId: agentId > 0 ? agentId : 1,
           agentName: name,
           status: 'active',
         );
@@ -174,13 +187,22 @@ class SupportChatController extends ChangeNotifier {
       case 'support.typing':
         agentTyping = true;
         notifyListeners();
-        Future<void>.delayed(const Duration(seconds: 3), () {
+        _typingTimer?.cancel();
+        _typingTimer = Timer(const Duration(seconds: 3), () {
+          if (_disposed) return;
           agentTyping = false;
           notifyListeners();
         });
         return;
+      case 'support.disconnected':
+        // 仅代表长连接断开，会话仍有效；稍后自动重连，不能把界面置为"会话已结束"。
+        socketReady = false;
+        _scheduleSocketReconnect();
+        notifyListeners();
+        return;
       case 'support.error':
         error = asString(event.data['message'], fallback: '客服消息发送失败');
+        _markLastSendingFailed();
         break;
       case 'ticket.reply':
         break;
@@ -229,9 +251,9 @@ class SupportChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> sendText(String text) async {
+  Future<bool> sendText(String text) async {
     final content = text.trim();
-    if (content.isEmpty || conversation == null) return;
+    if (content.isEmpty || conversation == null) return false;
     final conv = conversation!;
     final optimistic = SupportMessage(
       localId: 'local-${DateTime.now().microsecondsSinceEpoch}',
@@ -248,11 +270,19 @@ class SupportChatController extends ChangeNotifier {
     notifyListeners();
     try {
       if (socketReady) {
-        _socket.sendMessage(
+        final sent = _socket.sendMessage(
           conversationId: conv.id,
           contentType: 'text',
           content: content,
         );
+        if (!sent) {
+          _replaceOptimistic(
+            optimistic,
+            optimistic.copyWith(sending: false, failed: true),
+          );
+          error = '消息发送失败，请检查网络后重试';
+          return false;
+        }
         _replaceOptimistic(optimistic, optimistic.copyWith(sending: false));
       } else {
         final message = await services.supportApi.sendMessage(
@@ -263,9 +293,11 @@ class SupportChatController extends ChangeNotifier {
         _replaceOptimistic(optimistic, message);
         unawaited(_refreshAfterDelay());
       }
+      return true;
     } catch (e) {
       _replaceOptimistic(optimistic, optimistic.copyWith(sending: false, failed: true));
       error = e.toString();
+      return false;
     } finally {
       sending = false;
       notifyListeners();
@@ -311,6 +343,12 @@ class SupportChatController extends ChangeNotifier {
         }(),
       );
     } catch (e) {
+      final index = messages.lastIndexWhere(
+        (item) => item.contentType == 'image' && item.id == 0 && item.sending,
+      );
+      if (index >= 0) {
+        messages[index] = messages[index].copyWith(sending: false, failed: true);
+      }
       error = e.toString();
     } finally {
       sending = false;
@@ -318,7 +356,9 @@ class SupportChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> sendEmoji(String emoji) => sendText(emoji);
+  Future<void> sendEmoji(String emoji) async {
+    await sendText(emoji);
+  }
 
   void _replaceOptimistic(SupportMessage old, SupportMessage next) {
     final index = messages.indexWhere((item) => item.localId == old.localId);
@@ -329,30 +369,36 @@ class SupportChatController extends ChangeNotifier {
     }
   }
 
-  Future<void> transferHuman() async {
+  Future<bool> transferHuman() async {
     final conv = conversation;
-    if (conv == null) return;
+    if (conv == null) return false;
     try {
       final result = await services.supportApi.transferHuman(conv.id);
       if (result.conversation != null) conversation = result.conversation;
       queuePosition = result.queuePosition;
+      error = null;
       notifyListeners();
+      return true;
     } catch (e) {
       error = e.toString();
       notifyListeners();
+      return false;
     }
   }
 
-  Future<void> rate(int score, String comment) async {
+  Future<bool> rate(int score, String comment) async {
     final conv = conversation;
-    if (conv == null) return;
+    if (conv == null) return false;
     try {
       await services.supportApi.rate(conversationId: conv.id, score: score, comment: comment);
       rating = score;
+      error = null;
       notifyListeners();
+      return true;
     } catch (e) {
       error = e.toString();
       notifyListeners();
+      return false;
     }
   }
 
@@ -361,7 +407,16 @@ class SupportChatController extends ChangeNotifier {
     if (conv == null) return;
     try {
       final result = await services.supportApi.messages(conv.id);
-      messages = result.messages.map(_normalize).toList();
+      final server = result.messages.map(_normalize).toList();
+      final serverIds = server.map((item) => item.id).toSet();
+      // 保留已懒加载的其他会话历史与正在发送的乐观消息，避免刷新把历史清空。
+      final history = messages.where(
+        (item) => item.id > 0 && _historyMessageIds.contains(item.id) && !serverIds.contains(item.id),
+      ).toList();
+      final pending = messages
+          .where((item) => item.id == 0 && (item.sending || item.failed))
+          .toList();
+      messages = [...history, ...server, ...pending];
       if (result.conversation != null) conversation = result.conversation;
       notifyListeners();
     } catch (_) {}
@@ -369,6 +424,7 @@ class SupportChatController extends ChangeNotifier {
 
   Future<void> _refreshAfterDelay() async {
     await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (_disposed) return;
     await reload();
   }
 
@@ -377,8 +433,35 @@ class SupportChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _scheduleSocketReconnect() {
+    final conv = conversation;
+    if (_disposed || conv == null || _socketReconnectTimer != null) return;
+    _socketReconnectTimer = Timer(const Duration(seconds: 3), () {
+      _socketReconnectTimer = null;
+      if (_disposed || conversation == null) return;
+      _connectSocket(conversation!.id);
+    });
+  }
+
+  void _markLastSendingFailed() {
+    final index = messages.lastIndexWhere(
+      (item) => item.sending && item.senderType == 'user',
+    );
+    if (index < 0) return;
+    messages[index] = messages[index].copyWith(sending: false, failed: true);
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
+    _typingTimer?.cancel();
+    _socketReconnectTimer?.cancel();
     _socketSub?.cancel();
     _socket.dispose();
     super.dispose();
