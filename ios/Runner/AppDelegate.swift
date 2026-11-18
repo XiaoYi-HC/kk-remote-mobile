@@ -5,26 +5,26 @@ import AudioToolbox
 import GameController
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let channelName = "com.kk.remote/platform"
 
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GeneratedPluginRegistrant.register(with: self)
-
-    if let controller = window?.rootViewController as? FlutterViewController {
-      let channel = FlutterMethodChannel(
-        name: channelName,
-        binaryMessenger: controller.binaryMessenger
-      )
-      channel.setMethodCallHandler { [weak self] call, result in
-        self?.handle(call: call, result: result)
-      }
-    }
-
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    let channel = FlutterMethodChannel(
+      name: channelName,
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call: call, result: result)
+    }
   }
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
