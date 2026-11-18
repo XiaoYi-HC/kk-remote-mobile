@@ -16,7 +16,6 @@ import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/app_text_field.dart';
 import '../../../widgets/brand_logo.dart';
 import '../../../widgets/countdown_button.dart';
-import '../../../widgets/loading_view.dart';
 import '../state/auth_provider.dart';
 
 class LoginPage extends StatefulWidget {
@@ -28,8 +27,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _LoginPageState extends State<LoginPage> {
   final _phoneFormKey = GlobalKey<FormState>();
   final _passwordFormKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
@@ -38,28 +36,34 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   final _passwordController = TextEditingController();
 
   bool _agreed = false;
-  final bool _obscurePassword = true;
+  bool _preferCode = true;
   String? _inlineError;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _accountController.text = widget.initialAccount;
     if (widget.initialAccount.isNotEmpty && widget.initialAccount.contains('@')) {
-      _tabController.index = 1;
+      _preferCode = false;
     }
     _agreed = context.read<SettingsProvider>().protocolAgreed;
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
     _phoneController.dispose();
     _codeController.dispose();
     _accountController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  /// 后台开关决定可用的登录方式；两种都可用时跟随用户选择。
+  bool _useCodeMode(ConfigProvider config) {
+    final phone = config.loginEnabled('phone');
+    final password = config.loginEnabled('password');
+    if (phone && password) return _preferCode;
+    return phone;
   }
 
   Future<bool> _sendCode() async {
@@ -246,29 +250,34 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final wide = constraints.maxWidth >= 760;
+            final wide = constraints.maxWidth >= 820;
             return SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              padding: EdgeInsets.fromLTRB(20, wide ? 40 : 24, 20, 24),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                constraints: BoxConstraints(minHeight: constraints.maxHeight - (wide ? 64 : 48)),
                 child: wide
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           const Expanded(child: _BrandPanel()),
-                          const SizedBox(width: 40),
+                          const SizedBox(width: 48),
                           SizedBox(width: 420, child: _buildFormCard(config, auth)),
                         ],
                       )
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 8),
                           const BrandLogo(size: 76, subtitle: '安全、流畅的跨端远程控制'),
-                          const SizedBox(height: 28),
+                          const SizedBox(height: 26),
                           _buildFormCard(config, auth),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 20),
+                          const Text(
+                            '连接手机与电脑，随时随地远程协助',
+                            style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                          ),
+                          const SizedBox(height: 8),
                         ],
                       ),
               ),
@@ -280,121 +289,109 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
   }
 
   Widget _buildFormCard(ConfigProvider config, AuthProvider auth) {
-    final showCodeTab = config.loginEnabled('phone');
-    final showPasswordTab = config.loginEnabled('password');
+    final phoneEnabled = config.loginEnabled('phone');
+    final passwordEnabled = config.loginEnabled('password');
+    final useCode = _useCodeMode(config);
+    final noMethod = !phoneEnabled && !passwordEnabled;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
-          BoxShadow(color: Color(0x0A1F2329), blurRadius: 20, offset: Offset(0, 8)),
+          BoxShadow(color: Color(0x0A1F2329), blurRadius: 24, offset: Offset(0, 10)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (showCodeTab && showPasswordTab)
-            TabBar(
-              controller: _tabController,
-              labelColor: AppColors.textPrimary,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorColor: AppColors.primary,
-              indicatorSize: TabBarIndicatorSize.label,
-              dividerColor: AppColors.border,
-              labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontSize: 15),
-              tabs: const [
-                Tab(text: '手机号验证码登录'),
-                Tab(text: '密码登录'),
-              ],
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Text(
-                showCodeTab ? '手机号验证码登录' : '密码登录',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
+          Text(
+            '欢迎登录',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              height: 1.2,
             ),
-          const SizedBox(height: 14),
-          if (showCodeTab && showPasswordTab)
-            SizedBox(
-              height: 244,
-              child: TabBarView(
-                controller: _tabController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [_buildCodeForm(), _buildPasswordForm()],
-              ),
-            )
-          else
-            SizedBox(
-              height: 190,
-              child: showCodeTab
-                  ? _buildCodeForm()
-                  : (showPasswordTab
-                      ? _buildPasswordForm()
-                      : _buildDisabledHint('登录方式已全部关闭')),
-            ),
+          ),
           const SizedBox(height: 4),
-          if (_inlineError != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppColors.dangerSoft,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.danger),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      _inlineError!,
-                      style: const TextStyle(fontSize: 12, color: AppColors.danger, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
+          const Text(
+            '登录后可同步设备列表与远程记录',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 18),
+          if (phoneEnabled && passwordEnabled) ...[
+            _ModeSwitch(
+              useCode: useCode,
+              onChanged: (value) {
+                FocusScope.of(context).unfocus();
+                setState(() {
+                  _preferCode = value;
+                  _inlineError = null;
+                });
+              },
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 18),
           ],
+          if (noMethod)
+            _DisabledHint(text: '管理员已关闭账号登录，可尝试游客体验')
+          else
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              alignment: Alignment.topCenter,
+              child: useCode ? _buildCodeForm() : _buildPasswordForm(),
+            ),
+          if (_inlineError != null) ...[
+            const SizedBox(height: 14),
+            _ErrorBanner(text: _inlineError!),
+          ],
+          if (config.error != null && config.loadedOnce == false) ...[
+            const SizedBox(height: 14),
+            _ErrorBanner(
+              text: '登录配置读取失败，已按默认方式展示。',
+              actionLabel: '重试',
+              onAction: config.refresh,
+            ),
+          ],
+          const SizedBox(height: 20),
           AppPrimaryButton(
             label: '登录',
             loading: auth.loading,
-            onPressed: () {
-              final useCode = showCodeTab && (!showPasswordTab || _tabController.index == 0);
-              if (useCode) {
-                _loginByCode();
-              } else {
-                _loginByPassword();
-              }
-            },
+            onPressed: noMethod
+                ? null
+                : () {
+                    if (useCode) {
+                      _loginByCode();
+                    } else {
+                      _loginByPassword();
+                    }
+                  },
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: _AgreementRow(
-                  agreed: _agreed,
-                  onChanged: (value) => setState(() => _agreed = value),
-                  onUserProtocol: () => _showProtocol('user'),
-                  onPrivacy: () => _showProtocol('privacy'),
-                ),
-              ),
-              TextButton(
+          const SizedBox(height: 14),
+          _AgreementRow(
+            agreed: _agreed,
+            onChanged: (value) => setState(() => _agreed = value),
+            onUserProtocol: () => _showProtocol('user'),
+            onPrivacy: () => _showProtocol('privacy'),
+          ),
+          if (passwordEnabled) ...[
+            const SizedBox(height: 2),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
                 onPressed: () => context.push('/forgot-password'),
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(44, 36),
+                  minimumSize: const Size(44, 34),
                   padding: EdgeInsets.zero,
                   foregroundColor: AppColors.textSecondary,
                 ),
-                child: const Text('忘记密码', style: TextStyle(fontSize: 12)),
+                child: const Text('忘记密码？', style: TextStyle(fontSize: 12)),
               ),
-            ],
-          ),
-          const SizedBox(height: 2),
+            ),
+          ],
+          const SizedBox(height: 6),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -406,14 +403,13 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                 ),
                 child: const Text('立即注册', style: TextStyle(fontSize: 13)),
               ),
-              if (config.allowGuest)
+              if (config.allowGuest) ...[
                 Container(
                   width: 1,
                   height: 12,
                   color: AppColors.border,
                   margin: const EdgeInsets.symmetric(horizontal: 6),
                 ),
-              if (config.allowGuest)
                 TextButton(
                   onPressed: auth.loading ? null : _guestLogin,
                   style: TextButton.styleFrom(
@@ -422,10 +418,11 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   ),
                   child: const Text('游客体验', style: TextStyle(fontSize: 13)),
                 ),
+              ],
             ],
           ),
           if (config.loginChannels.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: const [
                 Expanded(child: Divider()),
@@ -449,11 +446,6 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
                   .toList(),
             ),
           ],
-          if (config.isLoading && !config.loadedOnce)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: LoadingView(message: '正在读取登录配置…'),
-            ),
         ],
       ),
     );
@@ -542,7 +534,7 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
             controller: _passwordController,
             label: '密码',
             hint: '请输入密码',
-            obscure: _obscurePassword,
+            obscure: true,
             allowToggleObscure: true,
             textInputAction: TextInputAction.done,
             validator: (value) => Validators.required(value, '密码'),
@@ -553,10 +545,124 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
       ),
     );
   }
+}
 
-  Widget _buildDisabledHint(String text) {
-    return Center(
-      child: Text(text, style: const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+/// 登录方式切换（替代原 TabBar，避免固定高度裁切内容）。
+class _ModeSwitch extends StatelessWidget {
+  const _ModeSwitch({required this.useCode, required this.onChanged});
+
+  final bool useCode;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _item('验证码登录', useCode, () => onChanged(true))),
+          const SizedBox(width: 4),
+          Expanded(child: _item('密码登录', !useCode, () => onChanged(false))),
+        ],
+      ),
+    );
+  }
+
+  Widget _item(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 38,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.surface : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          boxShadow: selected
+              ? const [BoxShadow(color: Color(0x0F1F2329), blurRadius: 6, offset: Offset(0, 2))]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            color: selected ? AppColors.textPrimary : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.text, this.actionLabel, this.onAction});
+
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.dangerSoft,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.danger),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12, color: AppColors.danger, height: 1.4),
+            ),
+          ),
+          if (actionLabel != null)
+            GestureDetector(
+              onTap: onAction,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(
+                  actionLabel!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.danger,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DisabledHint extends StatelessWidget {
+  const _DisabledHint({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 26),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 13, color: AppColors.textTertiary, height: 1.5),
+      ),
     );
   }
 }
@@ -576,8 +682,8 @@ class _AgreementRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         SizedBox(
           width: 30,
