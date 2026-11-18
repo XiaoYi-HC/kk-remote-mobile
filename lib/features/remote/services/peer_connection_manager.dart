@@ -24,6 +24,9 @@ class PeerConnectionManager {
   RTCVideoRenderer? _renderer;
   final Map<String, RTCDataChannel> _channels = {};
   final List<Map<String, dynamic>> _controlQueue = [];
+  final List<RTCIceCandidate> _pendingIce = [];
+  bool _remoteDescriptionSet = false;
+  bool _disposed = false;
   Timer? _statsTimer;
 
   final StreamController<Map<String, dynamic>> _control =
@@ -87,8 +90,14 @@ class PeerConnectionManager {
         kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
         init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
       );
+      // 同时声明音频 recvonly，否则 answer 里不会出现音频 m-line，
+      // 被控端即使采集了系统声音也无法下发给手机。
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
     } catch (error) {
-      if (kDebugMode) debugPrint('addTransceiver video failed: $error');
+      if (kDebugMode) debugPrint('addTransceiver failed: $error');
     }
 
     pc.onIceCandidate = (candidate) {
@@ -96,27 +105,32 @@ class PeerConnectionManager {
     };
     pc.onIceConnectionState = (state) {
       onIceStateChanged?.call(state);
-      _connectionLog.add('ICE: ${state.name}');
+      _log('ICE: ${state.name}');
       if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
-        _connectionLog.add('ICE 连接失败');
+        _log('ICE 连接失败');
       }
     };
     pc.onConnectionState = (state) {
       onConnectionStateChanged?.call(state);
-      _connectionLog.add('连接状态: ${state.name}');
+      _log('连接状态: ${state.name}');
     };
     pc.onTrack = (event) {
-      if (event.streams.isNotEmpty) {
+      // 只把视频流交给渲染器，音频/摄像头等其它轨道不能覆盖画面。
+      if (event.track.kind == 'video' && event.streams.isNotEmpty) {
         _renderer?.srcObject = event.streams.first;
       }
-      _meta.add({
-        't': 'track.added',
-        'kind': event.track.kind,
-        'id': event.track.id,
-      });
+      try {
+        _meta.add({
+          't': 'track.added',
+          'kind': event.track.kind,
+          'id': event.track.id,
+        });
+      } catch (_) {}
     };
     pc.onAddStream = (stream) {
-      _renderer?.srcObject = stream;
+      if (stream.getVideoTracks().isNotEmpty) {
+        _renderer?.srcObject = stream;
+      }
     };
     pc.onDataChannel = (channel) {
       _bindChannel(channel);
@@ -145,7 +159,7 @@ class PeerConnectionManager {
   void _bindChannel(RTCDataChannel channel) {
     _channels[channel.label ?? ''] = channel;
     channel.onDataChannelState = (state) {
-      _connectionLog.add('DataChannel ${channel.label}: ${state.name}');
+      _log('DataChannel ${channel.label}: ${state.name}');
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
         _flushControlQueue();
       }
@@ -195,6 +209,8 @@ class PeerConnectionManager {
     final pc = _pc;
     if (pc == null) throw StateError('PeerConnection 未初始化');
     await pc.setRemoteDescription(RTCSessionDescription(sdp, 'offer'));
+    _remoteDescriptionSet = true;
+    await _flushPendingIce();
     final answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     return answer.sdp ?? '';
@@ -204,6 +220,8 @@ class PeerConnectionManager {
     final pc = _pc;
     if (pc == null) return;
     await pc.setRemoteDescription(RTCSessionDescription(sdp, 'answer'));
+    _remoteDescriptionSet = true;
+    await _flushPendingIce();
   }
 
   Future<void> addIceCandidate({
@@ -216,11 +234,37 @@ class PeerConnectionManager {
     // 部分候选（尤其是被控端 webrtc-rs 发出的）可能缺少 sdpMid/sdpMLineIndex，这里统一补默认值。
     final mid = (sdpMid == null || sdpMid.isEmpty) ? '0' : sdpMid;
     final mLineIndex = sdpMLineIndex ?? 0;
+    final ice = RTCIceCandidate(candidate, mid, mLineIndex);
+    // 远端描述尚未设置时先缓存，否则 addCandidate 会抛错并永久丢失该候选。
+    if (!_remoteDescriptionSet) {
+      _pendingIce.add(ice);
+      return;
+    }
+    await _addIceSafely(ice);
+  }
+
+  Future<void> _flushPendingIce() async {
+    if (_pendingIce.isEmpty) return;
+    final pending = List<RTCIceCandidate>.from(_pendingIce);
+    _pendingIce.clear();
+    for (final ice in pending) {
+      await _addIceSafely(ice);
+    }
+  }
+
+  Future<void> _addIceSafely(RTCIceCandidate ice) async {
     try {
-      await _pc?.addCandidate(RTCIceCandidate(candidate, mid, mLineIndex));
+      await _pc?.addCandidate(ice);
     } catch (error) {
       if (kDebugMode) debugPrint('addCandidate failed: $error');
     }
+  }
+
+  void _log(String message) {
+    if (_disposed) return;
+    try {
+      _connectionLog.add(message);
+    } catch (_) {}
   }
 
   void _startStatsPolling() {
@@ -232,6 +276,7 @@ class PeerConnectionManager {
   int _lastBytesSent = 0;
 
   Future<void> pollStats() async {
+    if (_disposed) return;
     final pc = _pc;
     if (pc == null) return;
     try {
@@ -293,18 +338,21 @@ class PeerConnectionManager {
       _lastBytesReceived = bytesReceived;
       _lastBytesSent = bytesSent;
       final p2p = candidateType == 'host' || candidateType == 'srflx';
-      _stats.add(TransportInfo(
-        transport: p2p ? 'p2p' : (candidateType == 'relay' ? 'relay' : ''),
-        candidateType: candidateType,
-        rttMs: rttMs,
-        lossRate: lossRate,
-        bitrateKbps: bitrateKbps,
-        fps: fps,
-        downBw: (deltaBytes * 8 / 1000).round().clamp(0, 1 << 31).toInt(),
-        upBw: (deltaSent * 8 / 1000).round().clamp(0, 1 << 31).toInt(),
-        remoteAddress: remoteAddress,
-        connectionState: transport,
-      ));
+      if (_disposed) return;
+      try {
+        _stats.add(TransportInfo(
+          transport: p2p ? 'p2p' : (candidateType == 'relay' ? 'relay' : ''),
+          candidateType: candidateType,
+          rttMs: rttMs,
+          lossRate: lossRate,
+          bitrateKbps: bitrateKbps,
+          fps: fps,
+          downBw: (deltaBytes * 8 / 1000).round().clamp(0, 1 << 31).toInt(),
+          upBw: (deltaSent * 8 / 1000).round().clamp(0, 1 << 31).toInt(),
+          remoteAddress: remoteAddress,
+          connectionState: transport,
+        ));
+      } catch (_) {}
     } catch (error) {
       if (kDebugMode) debugPrint('pollStats error: $error');
     }
@@ -351,7 +399,7 @@ class PeerConnectionManager {
     _sendOn('control', event);
   }
 
-  void sendFile(Map<String, dynamic> event) => _sendOn('file', event);
+  bool sendFile(Map<String, dynamic> event) => _sendOn('file', event);
 
   void sendChat(Map<String, dynamic> event) => _sendOn('chat', event);
 
@@ -361,13 +409,19 @@ class PeerConnectionManager {
 
   void sendMeta(Map<String, dynamic> event) => _sendOn('meta', event);
 
-  void _sendOn(String label, Map<String, dynamic> event) {
+  int get fileBufferedAmount => _channels['file']?.bufferedAmount ?? 0;
+
+  bool _sendOn(String label, Map<String, dynamic> event) {
     final channel = _channels[label];
-    if (channel == null || channel.state != RTCDataChannelState.RTCDataChannelOpen) return;
+    if (channel == null || channel.state != RTCDataChannelState.RTCDataChannelOpen) {
+      return false;
+    }
     try {
       channel.send(RTCDataChannelMessage(jsonEncode(event)));
+      return true;
     } catch (error) {
       if (kDebugMode) debugPrint('send $label failed: $error');
+      return false;
     }
   }
 
@@ -415,16 +469,31 @@ class PeerConnectionManager {
   }
 
   Future<void> dispose() async {
+    _disposed = true;
     _statsTimer?.cancel();
     _statsTimer = null;
+    final pc = _pc;
+    if (pc != null) {
+      // 先摘掉原生回调，避免释放过程中仍向已关闭的 StreamController 投递事件。
+      try {
+        pc.onIceCandidate = null;
+        pc.onIceConnectionState = null;
+        pc.onConnectionState = null;
+        pc.onTrack = null;
+        pc.onAddStream = null;
+        pc.onDataChannel = null;
+      } catch (_) {}
+    }
     for (final channel in _channels.values) {
       try {
+        channel.onDataChannelState = null;
+        channel.onMessage = null;
         await channel.close();
       } catch (_) {}
     }
     _channels.clear();
     try {
-      await _pc?.close();
+      await pc?.close();
     } catch (_) {}
     _pc = null;
     try {
