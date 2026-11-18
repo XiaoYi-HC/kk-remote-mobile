@@ -28,7 +28,6 @@ import '../features/settings/pages/about_page.dart';
 import '../features/settings/pages/accessibility_page.dart';
 import '../features/settings/pages/audio_settings_page.dart';
 import '../features/settings/pages/connection_settings_page.dart';
-import '../features/settings/pages/developer_settings_page.dart';
 import '../features/settings/pages/display_settings_page.dart';
 import '../features/settings/pages/downloads_page.dart';
 import '../features/settings/pages/file_settings_page.dart';
@@ -37,6 +36,7 @@ import '../features/settings/pages/language_page.dart';
 import '../features/settings/pages/network_diagnostics_page.dart';
 import '../features/settings/pages/notification_settings_page.dart';
 import '../features/settings/pages/offline_commands_page.dart';
+import '../features/settings/pages/protocol_page.dart';
 import '../features/settings/pages/scheduled_tasks_page.dart';
 import '../features/settings/pages/security_settings_page.dart';
 import '../features/settings/pages/settings_page.dart';
@@ -137,6 +137,11 @@ GoRouter buildRouter(AuthProvider auth) {
       ),
       GoRoute(path: '/settings/about', builder: (context, state) => const AboutPage()),
       GoRoute(
+        path: '/settings/protocol/:type',
+        builder: (context, state) =>
+            ProtocolPage(type: state.pathParameters['type'] ?? 'user'),
+      ),
+      GoRoute(
         path: '/settings/language',
         builder: (context, state) => const LanguagePage(),
       ),
@@ -161,10 +166,6 @@ GoRouter buildRouter(AuthProvider auth) {
       GoRoute(
         path: '/settings/gamepad',
         builder: (context, state) => const GamepadSettingsPage(),
-      ),
-      GoRoute(
-        path: '/settings/developer',
-        builder: (context, state) => const DeveloperSettingsPage(),
       ),
       GoRoute(path: '/help', builder: (context, state) => const HelpPage()),
       GoRoute(path: '/help/support', builder: (context, state) => const SupportChatPage()),
