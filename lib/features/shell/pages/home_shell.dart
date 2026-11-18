@@ -1,11 +1,15 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../state/app_services.dart';
+import '../../auth/state/auth_provider.dart';
 import '../../devices/pages/home_page.dart';
 import '../../devices/pages/remote_assist_page.dart';
 import '../../settings/pages/settings_page.dart';
+import '../../support/state/support_notify_service.dart';
 
 /// 登录后的主框架：底部悬浮 Liquid Glass 标签栏 + 三个页面。
 class HomeShell extends StatefulWidget {
@@ -27,6 +31,13 @@ class _HomeShellState extends State<HomeShell> {
     _TabItem(icon: Icons.desktop_windows_outlined, activeIcon: Icons.desktop_windows_rounded, label: '远程协助'),
     _TabItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: '我的'),
   ];
+
+  @override
+  void dispose() {
+    // 退出登录或销毁主框架时断开客服通道，并清除本账号残留的通知。
+    SupportNotifyService.instance.stop(clearNotifications: true);
+    super.dispose();
+  }
 
   bool _onScroll(ScrollNotification notification) {
     if (notification is ScrollUpdateNotification) {
@@ -58,6 +69,18 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // 登录状态下常驻客服通道，接收客服/工单回复通知（按账号隔离）。
+    final auth = context.watch<AuthProvider>();
+    final services = context.read<AppServices>();
+    final token = services.api.token;
+    final user = auth.user;
+    if (token != null && token.isNotEmpty && user != null && user.id > 0) {
+      SupportNotifyService.instance.start(
+        services: services,
+        accountId: user.id,
+        token: token,
+      );
+    }
     final media = MediaQuery.of(context);
     final barInset = 86 + media.padding.bottom;
     return Scaffold(
