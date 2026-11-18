@@ -49,6 +49,28 @@ class DevicesProvider extends ChangeNotifier {
   Device? incomingCall;
   bool incomingAcceptRequested = false;
   String incomingSource = '';
+  int _loadSeq = 0;
+
+  /// 退出登录时清空账号相关数据，避免下一个账号看到上一个账号的设备。
+  void resetForLogout() {
+    _loadSeq++;
+    devices = [];
+    groups = [];
+    lanDevices = [];
+    keyword = '';
+    groupId = null;
+    favoriteOnly = false;
+    loading = false;
+    refreshing = false;
+    lanScanning = false;
+    error = null;
+    incomingCall = null;
+    incomingAcceptRequested = false;
+    incomingSource = '';
+    // 本地覆盖（备注/收藏/分组）属于账号数据，一并清理。
+    unawaited(_settings.setMapValue('device_local_overrides', const {}));
+    notifyListeners();
+  }
 
   List<Device> get visibleDevices {
     var list = List<Device>.from(devices);
@@ -75,6 +97,7 @@ class DevicesProvider extends ChangeNotifier {
   List<Device> get favoriteDevices => devices.where((item) => item.favorite).toList();
 
   Future<void> load({bool silent = false}) async {
+    final seq = ++_loadSeq;
     if (!silent) {
       loading = true;
       error = null;
@@ -82,24 +105,33 @@ class DevicesProvider extends ChangeNotifier {
     }
     try {
       final result = await _api.list();
+      if (seq != _loadSeq) return;
       devices = result.devices.map(_applyLocalOverride).toList();
       groups = result.groups;
       if (groups.isEmpty) {
         try {
-          groups = await _api.groups();
-        } catch (_) {}
+          final fetched = await _api.groups();
+          if (seq != _loadSeq) return;
+          groups = fetched;
+        } catch (_) {
+          // 分组接口抖动时保留本地已有分组，避免筛选条突然消失。
+        }
       }
       error = null;
     } on ApiException catch (e) {
-      error = e.message;
+      if (seq == _loadSeq) error = e.message;
     } finally {
-      loading = false;
-      refreshing = false;
-      notifyListeners();
+      // 旧请求不能覆盖新请求的 loading 状态。
+      if (seq == _loadSeq) {
+        loading = false;
+        refreshing = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> refresh() async {
+    if (refreshing) return;
     refreshing = true;
     notifyListeners();
     await load(silent: true);
