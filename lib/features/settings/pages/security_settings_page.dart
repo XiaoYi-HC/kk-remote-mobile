@@ -9,6 +9,7 @@ import '../../../state/settings_provider.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../../auth/state/auth_provider.dart';
+import '../../../widgets/mobile_page.dart';
 
 class SecuritySettingsPage extends StatelessWidget {
   const SecuritySettingsPage({super.key});
@@ -46,15 +47,9 @@ class SecuritySettingsPage extends StatelessWidget {
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthProvider>();
     final canUseBiometrics = AppLockService.instance.canUseBiometrics();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('安全与隐私'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '安全与隐私',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('本地安全'),
