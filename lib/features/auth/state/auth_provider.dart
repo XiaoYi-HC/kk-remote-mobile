@@ -19,6 +19,7 @@ class AuthProvider extends ChangeNotifier {
         _accountApi = accountApi,
         _store = store {
     _api.onUnauthorized = _handleUnauthorized;
+    _api.onRefreshToken = refreshAccessToken;
     _restore();
   }
 
@@ -255,6 +256,27 @@ class AuthProvider extends ChangeNotifier {
     _user = user;
     await _store.setMap(_userKey, _userToJson(user));
     notifyListeners();
+  }
+
+  /// access token 过期时用 refresh token 续期；失败返回 null，由调用方触发登出。
+  Future<String?> refreshAccessToken() async {
+    if (_refreshToken.isEmpty) return null;
+    try {
+      final result = await _authApi.refresh(_refreshToken);
+      if (result.accessToken.isEmpty) return null;
+      _accessToken = result.accessToken;
+      if (result.refreshToken.isNotEmpty) {
+        _refreshToken = result.refreshToken;
+      }
+      _api.setToken(_accessToken);
+      // 只更新令牌缓存，避免覆盖已缓存的用户资料。
+      await _store.setString(_tokenKey, _accessToken);
+      await _store.setString(_refreshKey, _refreshToken);
+      notifyListeners();
+      return _accessToken;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> logout({bool callApi = true}) async {
