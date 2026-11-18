@@ -59,7 +59,10 @@ class _AccountDeletionPageState extends State<AccountDeletionPage> {
       confirmText: '撤销申请',
     );
     if (!ok) return;
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       await context.read<AppServices>().accountApi.cancelDeletion();
       if (!mounted) return;
