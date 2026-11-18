@@ -789,8 +789,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       child: Consumer2<RemoteSessionProvider, SettingsProvider>(
         builder: (context, session, settings, _) {
           final connected = session.connected;
-          final videoWidth = session.renderer?.value.videoWidth ?? 0;
-          final videoHeight = session.renderer?.value.videoHeight ?? 0;
+          final videoSize = session.renderer?.value;
+          final videoWidth = videoSize?.width ?? 0;
+          final videoHeight = videoSize?.height ?? 0;
           final videoAspectRatio =
               (videoWidth > 0 && videoHeight > 0) ? videoWidth / videoHeight : null;
           return PopScope(
