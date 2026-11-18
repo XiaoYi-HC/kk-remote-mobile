@@ -9,6 +9,8 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../state/settings_provider.dart';
+import '../../../widgets/app_select.dart';
+import '../../../widgets/mobile_page.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../../remote/state/remote_session_provider.dart';
 
@@ -57,15 +59,9 @@ class _ConnectionSettingsPageState extends State<ConnectionSettingsPage> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     final active = RemoteSessionRegistry.instance.current;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('连接与网络'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '连接与网络',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           SettingsGroup(
@@ -98,17 +94,23 @@ class _ConnectionSettingsPageState extends State<ConnectionSettingsPage> {
               SettingsTile(
                 title: '重连间隔',
                 subtitle: '与信令断开后等待多久重试',
-                trailing: DropdownButton<int>(
-                  value: settings.reconnectInterval.clamp(1, 15).toInt(),
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 1, child: Text('1 秒')),
-                    DropdownMenuItem(value: 3, child: Text('3 秒')),
-                    DropdownMenuItem(value: 5, child: Text('5 秒')),
-                    DropdownMenuItem(value: 10, child: Text('10 秒')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) settings.setInt(SettingsKeys.reconnectInterval, value);
+                trailing: AppSelectValue(
+                  valueLabel: '${settings.reconnectInterval.clamp(1, 15)} 秒',
+                  onTap: () async {
+                    final value = await showAppPicker<int>(
+                      context,
+                      title: '重连间隔',
+                      selected: settings.reconnectInterval.clamp(1, 15).toInt(),
+                      options: const [
+                        AppSelectOption(value: 1, label: '1 秒'),
+                        AppSelectOption(value: 3, label: '3 秒'),
+                        AppSelectOption(value: 5, label: '5 秒'),
+                        AppSelectOption(value: 10, label: '10 秒'),
+                      ],
+                    );
+                    if (value != null) {
+                      await settings.setInt(SettingsKeys.reconnectInterval, value);
+                    }
                   },
                 ),
                 showDivider: false,
@@ -139,17 +141,25 @@ class _ConnectionSettingsPageState extends State<ConnectionSettingsPage> {
               SettingsTile(
                 title: '流量消耗提醒',
                 subtitle: '单次会话达到阈值后提醒',
-                trailing: DropdownButton<int>(
-                  value: settings.trafficReminderMb,
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 100, child: Text('100 MB')),
-                    DropdownMenuItem(value: 300, child: Text('300 MB')),
-                    DropdownMenuItem(value: 500, child: Text('500 MB')),
-                    DropdownMenuItem(value: 1024, child: Text('1 GB')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) settings.setInt(SettingsKeys.trafficReminderMb, value);
+                trailing: AppSelectValue(
+                  valueLabel: settings.trafficReminderMb >= 1024
+                      ? '1 GB'
+                      : '${settings.trafficReminderMb} MB',
+                  onTap: () async {
+                    final value = await showAppPicker<int>(
+                      context,
+                      title: '流量消耗提醒',
+                      selected: settings.trafficReminderMb,
+                      options: const [
+                        AppSelectOption(value: 100, label: '100 MB'),
+                        AppSelectOption(value: 300, label: '300 MB'),
+                        AppSelectOption(value: 500, label: '500 MB'),
+                        AppSelectOption(value: 1024, label: '1 GB'),
+                      ],
+                    );
+                    if (value != null) {
+                      await settings.setInt(SettingsKeys.trafficReminderMb, value);
+                    }
                   },
                 ),
               ),
