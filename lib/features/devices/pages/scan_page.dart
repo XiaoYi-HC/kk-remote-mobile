@@ -84,27 +84,38 @@ class _ScanPageState extends State<ScanPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('扫码连接', style: TextStyle(color: Colors.white)),
-        leading: IconButton(
-          onPressed: () => context.pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19, color: Colors.white),
-        ),
-        actions: [
-          IconButton(
-            tooltip: '手电筒',
-            onPressed: () => _controller.toggleTorch(),
-            icon: const Icon(Icons.flashlight_on_outlined, color: Colors.white),
-          ),
-        ],
-      ),
       body: Stack(
         children: [
           MobileScanner(
             controller: _controller,
             onDetect: _onDetect,
+          ),
+          // 顶部悬浮操作按钮（不再使用黑色标题栏）。
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: Row(
+                  children: [
+                    _CircleIconButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      tooltip: '返回',
+                      onTap: () => context.pop(),
+                    ),
+                    const Spacer(),
+                    _CircleIconButton(
+                      icon: Icons.flashlight_on_outlined,
+                      tooltip: '手电筒',
+                      onTap: () => _controller.toggleTorch(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
           IgnorePointer(
             child: Center(
@@ -154,6 +165,37 @@ class _ScanPageState extends State<ScanPage> {
         ],
       ),
     );
+  }
+}
+
+class _CircleIconButton extends StatelessWidget {
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = Material(
+      color: Colors.black.withAlpha(90),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, size: 18, color: Colors.white),
+        ),
+      ),
+    );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 
