@@ -156,7 +156,9 @@ class SupportChatController extends ChangeNotifier {
             !item.failed,
       );
       if (index >= 0) {
-        messages[index] = message;
+        messages[index] = message.attachmentUrl.isEmpty
+            ? message.copyWith(attachmentUrl: messages[index].attachmentUrl)
+            : message;
         agentTyping = false;
         notifyListeners();
         return;
@@ -238,7 +240,16 @@ class SupportChatController extends ChangeNotifier {
         content: '[图片]',
         attachmentId: upload.id,
       );
-      _replaceOptimistic(optimistic, _normalize(message));
+      _replaceOptimistic(
+        optimistic,
+        () {
+          final saved = _normalize(message);
+          // 服务端若未回传附件地址，保留本地上传后的地址，保证图片立即可见。
+          return saved.attachmentUrl.isEmpty
+              ? saved.copyWith(attachmentUrl: optimistic.attachmentUrl)
+              : saved;
+        }(),
+      );
     } catch (e) {
       error = e.toString();
     } finally {
