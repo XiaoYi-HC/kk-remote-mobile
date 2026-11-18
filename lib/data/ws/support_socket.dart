@@ -32,8 +32,16 @@ class SupportSocket {
       queryParameters: {'token': token},
     );
     _channel = WebSocketChannel.connect(uri);
-    await _channel!.ready;
-    _subscription = _channel!.stream.listen(
+    final channel = _channel!;
+    try {
+      await channel.ready;
+    } catch (error) {
+      if (identical(_channel, channel)) _channel = null;
+      rethrow;
+    }
+    // 等待 ready 期间可能被 close()/新的 connect() 替换，此时不能继续绑定旧通道。
+    if (!identical(_channel, channel)) return;
+    _subscription = channel.stream.listen(
       (raw) {
         try {
           final map = asMap(jsonDecode(raw.toString()));
@@ -43,10 +51,11 @@ class SupportSocket {
         }
       },
       onError: (Object error, StackTrace stack) {
-        _events.add(SupportSocketEvent(type: 'support.error', data: {'message': error.toString()}));
+        _events.add(SupportSocketEvent(type: 'support.disconnected', data: {'message': error.toString()}));
       },
       onDone: () {
-        _events.add(const SupportSocketEvent(type: 'support.closed'));
+        // 连接断开不等于客服关闭会话，交给上层决定是否重连。
+        _events.add(const SupportSocketEvent(type: 'support.disconnected'));
       },
       cancelOnError: false,
     );
@@ -56,13 +65,13 @@ class SupportSocket {
     });
   }
 
-  void sendMessage({
+  bool sendMessage({
     required int conversationId,
     required String contentType,
     required String content,
     int attachmentId = 0,
   }) {
-    _send({
+    return _send({
       'type': 'support.message',
       'data': {
         'conversationId': conversationId,
@@ -73,25 +82,29 @@ class SupportSocket {
     });
   }
 
-  void sendTyping(int conversationId) {
-    _send({
+  bool sendTyping(int conversationId) {
+    return _send({
       'type': 'support.typing',
       'data': {'conversationId': conversationId},
     });
   }
 
-  void markRead(int conversationId) {
-    _send({
+  bool markRead(int conversationId) {
+    return _send({
       'type': 'support.read',
       'data': {'conversationId': conversationId},
     });
   }
 
-  void _send(Map<String, dynamic> payload) {
+  bool _send(Map<String, dynamic> payload) {
+    final channel = _channel;
+    if (channel == null) return false;
     try {
-      _channel?.sink.add(jsonEncode(payload));
+      channel.sink.add(jsonEncode(payload));
+      return true;
     } catch (error) {
       if (kDebugMode) debugPrint('support send error: $error');
+      return false;
     }
   }
 
