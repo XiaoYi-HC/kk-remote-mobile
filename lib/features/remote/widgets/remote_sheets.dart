@@ -7,6 +7,7 @@ import '../../../data/models/remote.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/app_dialogs.dart';
+import '../../../widgets/app_select.dart';
 import '../../../widgets/app_sheet.dart';
 import '../../../widgets/settings_widgets.dart';
 
@@ -159,13 +160,14 @@ class _QualitySheetState extends State<QualitySheet> {
             onChanged: (value) => setState(() => _bitrate = value.round()),
           ),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            value: _encoder,
-            decoration: const InputDecoration(labelText: '编码器', isDense: true),
-            items: _encoderOptions.entries
-                .map((entry) => DropdownMenuItem(value: entry.key, child: Text(entry.value)))
-                .toList(),
-            onChanged: (value) => setState(() => _encoder = value ?? 'auto'),
+          AppSelectField<String>(
+            label: '编码器',
+            valueLabel: _encoderOptions[_encoder] ?? '自动',
+            options: [
+              for (final entry in _encoderOptions.entries)
+                AppSelectOption(value: entry.key, label: entry.value),
+            ],
+            onChanged: (value) => setState(() => _encoder = value),
           ),
           const SizedBox(height: 10),
           SettingsSwitchTile(
