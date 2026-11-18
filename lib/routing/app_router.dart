@@ -56,6 +56,15 @@ GoRouter buildRouter(AuthProvider auth) {
       if (!loggedIn && !publicRoutes) return '/login';
       if (loggedIn && publicRoutes) return '/home';
       if (path.startsWith('/account') && !auth.canAccessAccount) return '/login';
+      // 深链缺少必要参数时直接回首页，避免向服务端发送空识别码/id=0 的无效请求。
+      if (path == '/remote') {
+        final extra = state.extra;
+        if (extra is! RemoteArgs || extra.deviceCode.trim().isEmpty) return '/home';
+      }
+      if (path.startsWith('/device/')) {
+        final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+        if (id <= 0) return '/home';
+      }
       return null;
     },
     routes: [
