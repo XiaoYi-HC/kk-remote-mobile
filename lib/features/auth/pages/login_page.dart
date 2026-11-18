@@ -187,16 +187,6 @@ class _LoginPageState extends State<LoginPage> {
     return false;
   }
 
-  Future<void> _guestLogin() async {
-    final auth = context.read<AuthProvider>();
-    try {
-      await auth.loginAsGuest();
-      if (mounted) context.go('/home');
-    } catch (e) {
-      if (mounted) setState(() => _inlineError = e.toString());
-    }
-  }
-
   Future<void> _startOAuth(ThirdPartyChannel channel) async {
     final services = context.read<AppServices>();
     final auth = context.read<AuthProvider>();
@@ -336,7 +326,7 @@ class _LoginPageState extends State<LoginPage> {
             const SizedBox(height: 18),
           ],
           if (noMethod)
-            _DisabledHint(text: '管理员已关闭账号登录，可尝试游客体验')
+            _DisabledHint(text: '管理员已关闭账号登录，请联系客服处理')
           else
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
@@ -395,6 +385,10 @@ class _LoginPageState extends State<LoginPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const Text(
+                '还没有账号？',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
               TextButton(
                 onPressed: () => context.push('/register'),
                 style: TextButton.styleFrom(
@@ -403,22 +397,6 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 child: const Text('立即注册', style: TextStyle(fontSize: 13)),
               ),
-              if (config.allowGuest) ...[
-                Container(
-                  width: 1,
-                  height: 12,
-                  color: AppColors.border,
-                  margin: const EdgeInsets.symmetric(horizontal: 6),
-                ),
-                TextButton(
-                  onPressed: auth.loading ? null : _guestLogin,
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(44, 38),
-                    foregroundColor: AppColors.textSecondary,
-                  ),
-                  child: const Text('游客体验', style: TextStyle(fontSize: 13)),
-                ),
-              ],
             ],
           ),
           if (config.loginChannels.isNotEmpty) ...[
