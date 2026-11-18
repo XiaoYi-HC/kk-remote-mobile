@@ -92,17 +92,33 @@ class RemoteFileProvider extends ChangeNotifier {
 
   Future<void> _prepareDownloadDir() async {
     try {
+      Directory? dir;
       final configured = services.settings.downloadDir;
-      Directory dir;
       if (configured.isNotEmpty) {
-        dir = Directory(configured);
-      } else {
-        final downloads = await getDownloadsDirectory();
-        if (downloads != null) {
-          dir = Directory(p.join(downloads.path, 'KK远程'));
-        } else {
+        try {
+          final custom = Directory(configured);
+          if (!await custom.exists()) {
+            await custom.create(recursive: true);
+          }
+          dir = custom;
+        } catch (_) {
+          // 旧路径不可写（例如 iOS 容器根目录），回退到沙盒目录。
+          dir = null;
+        }
+      }
+      if (dir == null) {
+        if (Platform.isIOS) {
+          // iOS 无法写入容器下的 Downloads，改用应用沙盒 Documents。
           final documents = await getApplicationDocumentsDirectory();
-          dir = Directory(p.join(documents.path, 'KK远程下载'));
+          dir = Directory(p.join(documents.path, 'KKRemote'));
+        } else {
+          final downloads = await getDownloadsDirectory();
+          if (downloads != null) {
+            dir = Directory(p.join(downloads.path, 'KK远程'));
+          } else {
+            final documents = await getApplicationDocumentsDirectory();
+            dir = Directory(p.join(documents.path, 'KK远程下载'));
+          }
         }
       }
       if (!await dir.exists()) {
@@ -113,6 +129,7 @@ class RemoteFileProvider extends ChangeNotifier {
       final files = await dir.list().where((item) => item is File).toList();
       files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
       localDownloads = files;
+      error = null;
     } catch (e) {
       error = '无法创建下载目录：$e';
     }
