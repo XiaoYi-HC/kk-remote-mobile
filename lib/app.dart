@@ -58,7 +58,9 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
             final media = MediaQuery.of(context);
             return MediaQuery(
               data: media.copyWith(
-                textScaler: TextScaler.linear(settings.effectiveTextScale),
+                textScaler: TextScaler.linear(
+                  settings.effectiveTextScale.clamp(0.9, 1.25),
+                ),
               ),
               child: AppLockGate(
                 settings: settings,
