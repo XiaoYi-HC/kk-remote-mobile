@@ -52,7 +52,7 @@ class SupportChatController extends ChangeNotifier {
       target ??= await services.supportApi.createConversation();
       conversation = target;
       final result = await services.supportApi.messages(target.id);
-      messages = result.messages;
+      messages = result.messages.map(_normalize).toList();
       if (result.conversation != null) {
         conversation = result.conversation;
       }
@@ -130,7 +130,19 @@ class SupportChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _appendMessage(SupportMessage message) {
+  /// 服务端返回的附件地址是相对路径，这里统一补成完整地址。
+  SupportMessage _normalize(SupportMessage message) {
+    final url = message.attachmentUrl;
+    if (url.isEmpty || url.startsWith('http://') || url.startsWith('https://')) {
+      return message;
+    }
+    return message.copyWith(
+      attachmentUrl: services.api.resolveUri(url).toString(),
+    );
+  }
+
+  void _appendMessage(SupportMessage raw) {
+    final message = _normalize(raw);
     if (message.id > 0 && messages.any((item) => item.id == message.id)) {
       return;
     }
@@ -226,7 +238,7 @@ class SupportChatController extends ChangeNotifier {
         content: '[图片]',
         attachmentId: upload.id,
       );
-      _replaceOptimistic(optimistic, message);
+      _replaceOptimistic(optimistic, _normalize(message));
     } catch (e) {
       error = e.toString();
     } finally {
@@ -278,7 +290,7 @@ class SupportChatController extends ChangeNotifier {
     if (conv == null) return;
     try {
       final result = await services.supportApi.messages(conv.id);
-      messages = result.messages;
+      messages = result.messages.map(_normalize).toList();
       if (result.conversation != null) conversation = result.conversation;
       notifyListeners();
     } catch (_) {}
