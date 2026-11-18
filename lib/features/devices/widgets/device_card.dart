@@ -93,7 +93,12 @@ class DeviceCard extends StatelessWidget {
                           ],
                           if (device.groupName.isNotEmpty) ...[
                             const SizedBox(width: 6),
-                            _MiniBadge(text: device.groupName, color: AppColors.primary),
+                            Flexible(
+                              child: _MiniBadge(
+                                text: device.groupName,
+                                color: AppColors.primary,
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -371,6 +376,8 @@ class _MiniBadge extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w600),
       ),
     );
