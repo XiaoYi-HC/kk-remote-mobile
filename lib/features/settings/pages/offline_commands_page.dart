@@ -10,8 +10,10 @@ import '../../../widgets/app_button.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/app_sheet.dart';
 import '../../../widgets/app_text_field.dart';
+import '../../../widgets/app_select.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
+import '../../../widgets/mobile_page.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../../auth/state/auth_provider.dart';
 
@@ -189,22 +191,16 @@ class _OfflineCommandsPageState extends State<OfflineCommandsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('离线指令'),
-        actions: [
+    return MobilePage(
+      title: '离线指令',
+      actions: [
           IconButton(
             tooltip: '添加指令',
             onPressed: _error != null && _error!.contains('登录') ? null : _addCommand,
             icon: const Icon(Icons.add_rounded, size: 22),
           ),
         ],
-      ),
-      body: _loading
+      child: _loading
           ? const LoadingView()
           : _error != null
               ? EmptyState(
@@ -388,18 +384,26 @@ class _CommandFormState extends State<_CommandForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<int>(
-            value: _deviceId == 0 ? null : _deviceId,
-            decoration: const InputDecoration(labelText: '目标设备'),
-            items: widget.devices
-                .map(
-                  (device) => DropdownMenuItem(
-                    value: device.id,
-                    child: Text('${device.displayName}（${device.deviceCode}）'),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _deviceId = value ?? 0),
+          AppSelectField<int>(
+            label: '目标设备',
+            hint: '请选择目标设备',
+            valueLabel: () {
+              for (final device in widget.devices) {
+                if (device.id == _deviceId) {
+                  return '${device.displayName}（${device.deviceCode}）';
+                }
+              }
+              return '';
+            }(),
+            options: [
+              for (final device in widget.devices)
+                AppSelectOption(
+                  value: device.id,
+                  label: device.displayName,
+                  subtitle: device.deviceCode,
+                ),
+            ],
+            onChanged: (value) => setState(() => _deviceId = value),
           ),
           const SizedBox(height: 12),
           AppTextField(
