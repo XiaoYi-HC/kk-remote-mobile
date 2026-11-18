@@ -60,7 +60,16 @@ class AuthProvider extends ChangeNotifier {
   void _restore() {
     _accessToken = _store.getString(_tokenKey) ?? '';
     _refreshToken = _store.getString(_refreshKey) ?? '';
-    _isGuest = _store.getBool(_guestKey) ?? false;
+    // 已移除游客登录：清理历史游客会话，统一要求账号登录。
+    if (_store.getBool(_guestKey) ?? false) {
+      _accessToken = '';
+      _refreshToken = '';
+      unawaited(_store.remove(_tokenKey));
+      unawaited(_store.remove(_refreshKey));
+      unawaited(_store.remove(_userKey));
+      unawaited(_store.setBool(_guestKey, false));
+    }
+    _isGuest = false;
     final cached = _store.getMap(_userKey);
     if (cached.isNotEmpty) {
       _user = UserProfile.fromJson(cached);
