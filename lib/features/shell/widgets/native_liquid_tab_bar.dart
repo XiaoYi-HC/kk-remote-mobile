@@ -62,6 +62,7 @@ class _NativeLiquidGlassTabBarState extends State<NativeLiquidGlassTabBar> {
         onPlatformViewCreated: (id) {
           _channel = MethodChannel('kk/liquid_tab_bar/$id');
           _channel!.setMethodCallHandler((call) async {
+            if (!mounted) return;
             if (call.method == 'select') {
               final value = call.arguments;
               if (value is int) widget.onChanged(value);
@@ -70,5 +71,13 @@ class _NativeLiquidGlassTabBarState extends State<NativeLiquidGlassTabBar> {
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // 清理原生通道回调，避免平台视图销毁后仍回调已卸载的 State。
+    _channel?.setMethodCallHandler(null);
+    _channel = null;
+    super.dispose();
   }
 }
