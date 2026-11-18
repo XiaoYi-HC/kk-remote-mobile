@@ -47,6 +47,8 @@ class RemoteFileProvider extends ChangeNotifier {
   final Map<String, RemoteFileTask> _taskByRequest = {};
   final Map<String, IOSink> _sinks = {};
   final Map<String, Stopwatch> _speedWatch = {};
+  final Map<String, List<List<int>>> _pendingChunks = {};
+  bool _disposed = false;
 
   bool get fileChannelReady => session.peer?.fileReady ?? false;
 
@@ -228,6 +230,7 @@ class RemoteFileProvider extends ChangeNotifier {
           task
             ..status = 'failed'
             ..error = messageText;
+          _pendingChunks.remove(reqId);
           _closeSink(reqId);
           notifyListeners();
         }
@@ -323,7 +326,9 @@ class RemoteFileProvider extends ChangeNotifier {
   Future<void> _startDownloadSink(String reqId, Map<String, dynamic> message) async {
     final task = _taskByRequest[reqId];
     if (task == null) return;
-    await _prepareDownloadDir();
+    if (downloadDir.isEmpty) {
+      await _prepareDownloadDir();
+    }
     final safeName = _safeFileName(task.fileName);
     final file = File(p.join(downloadDir, safeName));
     task.localPath = file.path;
@@ -331,24 +336,41 @@ class RemoteFileProvider extends ChangeNotifier {
     _sinks[reqId] = sink;
     final total = asInt(message['size'], fallback: task.size);
     if (total > 0) task.size = total;
+    // 建立 sink 期间到达的分片先缓存，随后按顺序补写，避免静默丢包导致文件损坏。
+    final pending = _pendingChunks.remove(reqId);
+    if (pending != null) {
+      for (final bytes in pending) {
+        sink.add(bytes);
+        task.received += bytes.length;
+      }
+    }
     notifyListeners();
+  }
+
+  List<int>? _decodeChunk(Map<String, dynamic> message) {
+    final data = message['data'] ?? message['chunk'];
+    if (data is String) {
+      try {
+        return base64Decode(data);
+      } catch (_) {
+        return utf8.encode(data);
+      }
+    }
+    if (data is List) {
+      return data.whereType<num>().map((item) => item.toInt()).toList();
+    }
+    return null;
   }
 
   Future<void> _writeDownloadChunk(String reqId, Map<String, dynamic> message) async {
     final task = _taskByRequest[reqId];
+    if (task == null) return;
+    final bytes = _decodeChunk(message);
+    if (bytes == null) return;
     final sink = _sinks[reqId];
-    if (task == null || sink == null) return;
-    final data = message['data'] ?? message['chunk'];
-    List<int> bytes;
-    if (data is String) {
-      try {
-        bytes = base64Decode(data);
-      } catch (_) {
-        bytes = utf8.encode(data);
-      }
-    } else if (data is List) {
-      bytes = data.whereType<num>().map((item) => item.toInt()).toList();
-    } else {
+    if (sink == null) {
+      // sink 尚未创建（目录准备中），先入队。
+      _pendingChunks.putIfAbsent(reqId, () => []).add(bytes);
       return;
     }
     sink.add(bytes);
@@ -366,6 +388,14 @@ class RemoteFileProvider extends ChangeNotifier {
   Future<void> _finishDownload(String reqId) async {
     final task = _taskByRequest[reqId];
     if (task == null) return;
+    final pending = _pendingChunks.remove(reqId);
+    final sink = _sinks[reqId];
+    if (pending != null && sink != null) {
+      for (final bytes in pending) {
+        sink.add(bytes);
+        task.received += bytes.length;
+      }
+    }
     await _closeSink(reqId);
     task
       ..status = 'success'
@@ -421,37 +451,56 @@ class RemoteFileProvider extends ChangeNotifier {
     final reqId = _uuid.v4();
     _taskByRequest[reqId] = task;
     _speedWatch[reqId] = Stopwatch()..start();
-    session.peer?.sendFile({
-      't': 'fs.upload.start',
-      'path': currentPath,
-      'name': fileName,
-      'size': size,
-      'reqId': reqId,
-    });
+    final started = session.peer?.sendFile({
+          't': 'fs.upload.start',
+          'path': currentPath,
+          'name': fileName,
+          'size': size,
+          'reqId': reqId,
+        }) ??
+        false;
+    if (!started) {
+      task
+        ..status = 'failed'
+        ..error = '文件通道已断开';
+      _taskByRequest.remove(reqId);
+      _speedWatch.remove(reqId);
+      notifyListeners();
+      return;
+    }
     try {
       final file = File(localPath);
       final total = await file.length();
       var sent = 0;
-      const chunkSize = 64 * 1024;
+      const maxBuffered = 4 * 1024 * 1024;
       await for (final chunk in file.openRead()) {
         if (chunk.isEmpty) continue;
-        session.peer?.sendFile({
+        final peer = session.peer;
+        if (peer == null || _disposed) {
+          throw Exception('会话已结束，上传中断');
+        }
+        final ok = peer.sendFile({
           't': 'fs.upload.chunk',
           'reqId': reqId,
           'data': base64Encode(chunk),
         });
+        if (!ok) {
+          throw Exception('文件通道已断开，上传中断');
+        }
         sent += chunk.length;
         task.received = sent;
         final elapsed = _speedWatch[reqId]?.elapsedMilliseconds ?? 0;
         if (elapsed > 0) task.speedBps = (sent * 1000 / elapsed).round();
         if (total > 0) task.size = total;
         notifyListeners();
-        // 给发送缓冲留出空间。
-        if (sent % (chunkSize * 8) == 0) {
+        // 发送缓冲超过阈值时等待回落，避免把控制指令挤掉或丢包。
+        while ((session.peer?.fileBufferedAmount ?? 0) > maxBuffered) {
           await Future<void>.delayed(const Duration(milliseconds: 20));
+          if (_disposed) throw Exception('会话已结束，上传中断');
         }
       }
-      session.peer?.sendFile({'t': 'fs.upload.end', 'reqId': reqId});
+      final ended = session.peer?.sendFile({'t': 'fs.upload.end', 'reqId': reqId}) ?? false;
+      if (!ended) throw Exception('文件通道已断开，上传中断');
       task.status = 'success';
     } catch (error) {
       task
@@ -556,11 +605,20 @@ class RemoteFileProvider extends ChangeNotifier {
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
     _fileSub?.cancel();
     for (final sink in _sinks.values) {
       sink.close();
     }
+    _sinks.clear();
+    _pendingChunks.clear();
     super.dispose();
   }
 }
