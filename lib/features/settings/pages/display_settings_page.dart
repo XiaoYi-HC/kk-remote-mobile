@@ -164,20 +164,26 @@ class DisplaySettingsPage extends StatelessWidget {
           SettingsGroup(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
-              SettingsTile(
+              Builder(
+                builder: (context) {
+                  // 旧版本工具栏写入过 'locked'，统一按自动处理，避免选择器没有选中项。
+                  final orientation = settings.orientationLock == 'locked'
+                      ? 'auto'
+                      : settings.orientationLock;
+                  return SettingsTile(
                 title: '远程画面方向',
-                subtitle: settings.orientationLock == 'auto'
+                subtitle: orientation == 'auto'
                     ? '跟随手机自动旋转'
-                    : (settings.orientationLock == 'portrait' ? '锁定竖屏' : '锁定横屏'),
+                    : (orientation == 'portrait' ? '锁定竖屏' : '锁定横屏'),
                 trailing: AppSelectValue(
-                  valueLabel: settings.orientationLock == 'auto'
+                  valueLabel: orientation == 'auto'
                       ? '自动'
-                      : (settings.orientationLock == 'portrait' ? '竖屏' : '横屏'),
+                      : (orientation == 'portrait' ? '竖屏' : '横屏'),
                   onTap: () async {
                     final value = await showAppPicker<String>(
                       context,
                       title: '远程画面方向',
-                      selected: settings.orientationLock,
+                      selected: orientation,
                       options: const [
                         AppSelectOption(value: 'auto', label: '自动', subtitle: '跟随手机自动旋转'),
                         AppSelectOption(value: 'portrait', label: '竖屏', subtitle: '锁定竖屏方向'),
@@ -200,6 +206,8 @@ class DisplaySettingsPage extends StatelessWidget {
                   },
                 ),
                 showDivider: false,
+              );
+                },
               ),
             ],
           ),
