@@ -44,6 +44,7 @@ class SignalingClient {
   int _seq = 0;
   String _sessionId = '';
   bool _disposed = false;
+  bool _awaitingPong = false;
 
   final StreamController<SignalingMessage> _events =
       StreamController<SignalingMessage>.broadcast();
@@ -74,7 +75,13 @@ class SignalingClient {
       },
     );
     _channel = WebSocketChannel.connect(uri);
-    await _channel!.ready;
+    try {
+      await _channel!.ready;
+    } catch (error) {
+      // ready 失败时通道实际不可用，必须置空，避免 isConnected 误判。
+      _channel = null;
+      rethrow;
+    }
     _subscription = _channel!.stream.listen(
       _handleRaw,
       onError: (Object error, StackTrace stack) {
@@ -93,6 +100,10 @@ class SignalingClient {
       final map = asMap(jsonDecode(raw.toString()));
       final type = asString(map['type']);
       if (type.isEmpty) return;
+      if (type == 'pong') {
+        _awaitingPong = false;
+        return;
+      }
       final sessionId = asString(map['sessionId']);
       if (sessionId.isNotEmpty) _sessionId = sessionId;
       _events.add(SignalingMessage(
@@ -112,7 +123,18 @@ class SignalingClient {
 
   void _startHeartbeat() {
     _heartbeat?.cancel();
+    _awaitingPong = false;
     _heartbeat = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (_awaitingPong) {
+        // 上一轮 ping 没有收到 pong，说明连接已半开，主动断开触发重连。
+        _events.add(const SignalingMessage(
+          type: 'socket.error',
+          message: '信令心跳超时，连接已失效',
+        ));
+        close();
+        return;
+      }
+      _awaitingPong = true;
       send('ping');
     });
   }
@@ -226,6 +248,7 @@ class SignalingClient {
   Future<void> close() async {
     _heartbeat?.cancel();
     _heartbeat = null;
+    _awaitingPong = false;
     await _subscription?.cancel();
     _subscription = null;
     try {
