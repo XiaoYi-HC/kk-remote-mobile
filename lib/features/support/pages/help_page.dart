@@ -31,6 +31,7 @@ class _HelpPageState extends State<HelpPage> {
   bool _loading = true;
   String? _error;
   String _keyword = '';
+  int _faqSeq = 0;
 
   @override
   void initState() {
@@ -48,24 +49,29 @@ class _HelpPageState extends State<HelpPage> {
   }
 
   Future<void> _loadFaqs() async {
+    final seq = ++_faqSeq;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final result = await context.read<AppServices>().contentApi.faqs(
+      final services = context.read<AppServices>();
+      final result = await services.contentApi.faqs(
             categoryId: _categoryId,
             keyword: _keyword,
           );
-      _categories = result.categories;
-      _faqs = result.list;
+      if (!mounted || seq != _faqSeq) return;
+      setState(() {
+        _categories = result.categories;
+        _faqs = result.list;
+      });
       if (_keyword.isNotEmpty && result.list.isNotEmpty) {
-        context.read<AppServices>().contentApi.logFaqSearch(result.list.first.id, _keyword);
+        services.contentApi.logFaqSearch(result.list.first.id, _keyword);
       }
     } catch (e) {
-      _error = e.toString();
+      if (seq == _faqSeq && mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (seq == _faqSeq && mounted) setState(() => _loading = false);
     }
   }
 
@@ -73,7 +79,7 @@ class _HelpPageState extends State<HelpPage> {
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn) return;
     try {
-      final tickets = await context.read<AppServices>().supportApi.tickets();
+      final tickets = await context.read<AppServices>().supportApi.tickets(pageSize: 100);
       if (mounted) setState(() => _tickets = tickets);
     } catch (_) {}
   }
