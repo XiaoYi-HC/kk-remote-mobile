@@ -1,0 +1,38 @@
+name: iOS probe build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter 3.50.0
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+          cache: true
+
+      - name: Build stock template app
+        run: |
+          set -euo pipefail
+          flutter create --org com.kk --project-name kkprobe --platforms=ios probe
+          cd probe
+          flutter pub get
+          flutter build ios --release --no-codesign
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
+          cd build/ipa
+          zip -qry ../KKProbe-unsigned.ipa Payload
+          ls -lh ../KKProbe-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: KKProbe-unsigned-ipa
+          path: probe/build/KKProbe-unsigned.ipa
+          if-no-files-found: error
