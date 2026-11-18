@@ -16,10 +16,26 @@ import 'state/settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
 
   final store = await LocalStore.create();
   final settings = SettingsProvider(store);
+  // 应用持久化的屏幕方向锁，避免重启后设置失效。
+  switch (settings.orientationLock) {
+    case 'portrait':
+      await SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      break;
+    case 'landscape':
+      await SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      break;
+    default:
+      await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+  }
   final services = AppServices(settings: settings, store: store);
   final auth = AuthProvider(
     api: services.api,
@@ -38,6 +54,10 @@ Future<void> main() async {
     lanDiscovery: services.lanDiscovery,
     services: services,
   );
+  // 账号退出后立刻清空设备缓存，防止下一个账号看到上一个账号的设备。
+  auth.addListener(() {
+    if (!auth.isAuthenticated) devices.resetForLogout();
+  });
 
   try {
     await NotificationService.instance.init();
@@ -45,7 +65,7 @@ Future<void> main() async {
     // 通知初始化失败不应阻塞 App 启动。
   }
   NotificationService.instance.onNotificationTap = (payload) {
-    if (payload['type'] == 'incoming_call') {
+    if (payload['type'] == 'incoming_call' && settings.incomingCallPush) {
       devices.showIncomingCall(
         Device(
           name: payload['deviceName']?.toString() ?? '',
