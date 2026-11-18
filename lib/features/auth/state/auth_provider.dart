@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/platform/notification_service.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../data/api/account_api.dart';
 import '../../../data/api/auth_api.dart';
@@ -274,6 +275,8 @@ class AuthProvider extends ChangeNotifier {
     await _store.remove(_refreshKey);
     await _store.setBool(_guestKey, false);
     await _store.remove(_userKey);
+    // 清理该账号的本地通知，避免切换账号后串消息。
+    await NotificationService.instance.cancelAll();
     notifyListeners();
   }
 
