@@ -1,0 +1,60 @@
+name: iOS simulator smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sim:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter 3.50.0
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.0'
+          channel: stable
+          cache: true
+
+      - name: Build for simulator
+        run: |
+          set -x
+          flutter config --no-enable-swift-package-manager
+          flutter pub get
+          ( cd ios && pod install --repo-update )
+          flutter build ios --simulator --debug
+
+      - name: Launch in simulator
+        run: |
+          set -x
+          xcrun simctl list devices available
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[0-9]" | head -1 | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          echo "DEV=$DEV"
+          xcrun simctl boot "$DEV" || true
+          xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl install "$DEV" build/ios/iphonesimulator/Runner.app
+          xcrun simctl launch --terminate-running-process "$DEV" com.kk.remote || true
+          sleep 20
+          echo "=== process check ==="
+          xcrun simctl spawn "$DEV" launchctl list | grep -i "com.kk.remote" || echo "NOT RUNNING"
+          echo "=== system log ==="
+          xcrun simctl spawn "$DEV" log show --last 3m --predicate 'process == "Runner"' | tail -300 || true
+
+      - name: Collect crash reports
+        if: always()
+        run: |
+          set -x
+          ls -lt ~/Library/Logs/DiagnosticReports | head -20 || true
+          mkdir -p /tmp/crash
+          find ~/Library/Logs/DiagnosticReports -name "Runner*" -newermt "-30 minutes" -exec cp {} /tmp/crash/ \; || true
+          ls -l /tmp/crash || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-diagnostics
+          path: /tmp/crash
+          if-no-files-found: warn
