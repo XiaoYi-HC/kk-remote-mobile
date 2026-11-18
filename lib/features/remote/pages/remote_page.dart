@@ -20,6 +20,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/json_utils.dart';
 import '../../../data/models/remote.dart';
+import '../../../widgets/app_select.dart';
 import '../../../data/models/virtual_layout.dart';
 import '../../../state/app_services.dart';
 import '../../../state/config_provider.dart';
@@ -551,16 +552,21 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                 maxLength: 8,
               ),
               const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: type,
-                decoration: const InputDecoration(labelText: '按键类型'),
-                items: const [
-                  DropdownMenuItem(value: 'key', child: Text('键盘按键')),
-                  DropdownMenuItem(value: 'mouseLeft', child: Text('鼠标左键')),
-                  DropdownMenuItem(value: 'mouseRight', child: Text('鼠标右键')),
-                  DropdownMenuItem(value: 'joystick', child: Text('虚拟摇杆')),
+              AppSelectField<String>(
+                label: '按键类型',
+                valueLabel: const {
+                  'key': '键盘按键',
+                  'mouseLeft': '鼠标左键',
+                  'mouseRight': '鼠标右键',
+                  'joystick': '虚拟摇杆',
+                }[type] ?? '键盘按键',
+                options: const [
+                  AppSelectOption(value: 'key', label: '键盘按键'),
+                  AppSelectOption(value: 'mouseLeft', label: '鼠标左键'),
+                  AppSelectOption(value: 'mouseRight', label: '鼠标右键'),
+                  AppSelectOption(value: 'joystick', label: '虚拟摇杆'),
                 ],
-                onChanged: (value) => setDialogState(() => type = value ?? 'key'),
+                onChanged: (value) => setDialogState(() => type = value),
               ),
               if (type == 'key') ...[
                 const SizedBox(height: 8),
