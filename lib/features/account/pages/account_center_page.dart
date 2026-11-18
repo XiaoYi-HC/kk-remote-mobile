@@ -237,7 +237,7 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                         subtitle: user?.deletionRequestedAt != null
                             ? '注销申请处理中，可在注销页撤销'
                             : '申请注销后将进入冷静期',
-                        leading: const IconBadge(icon: Icons.person_remove_outlined, color: AppColors.danger),
+                        leading: const IconBadge(icon: Icons.person_remove_outlined),
                         onTap: () async {
                           await context.push('/account/deletion');
                           _load();
