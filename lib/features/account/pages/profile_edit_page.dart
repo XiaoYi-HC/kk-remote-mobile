@@ -50,7 +50,38 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
   }
 
   Future<void> _pickAvatar() async {
-    final image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 88);
+    if (_uploading) return;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('从相册选择'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('拍照'),
+              onTap: () => Navigator.of(sheetContext).pop(ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    XFile? image;
+    try {
+      image = await _picker.pickImage(source: source, imageQuality: 88, maxWidth: 1200);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '无法打开${source == ImageSource.camera ? '相机' : '相册'}：$e');
+      return;
+    }
     if (image == null) return;
     setState(() {
       _uploading = true;
@@ -58,9 +89,14 @@ class _ProfileEditPageState extends State<ProfileEditPage> {
     });
     try {
       final avatar = await context.read<AppServices>().accountApi.uploadAvatar(image.path);
+      if (!mounted) return;
       setState(() => _avatar = avatar);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('头像已上传，保存后生效')),
+      );
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (!mounted) return;
+      setState(() => _error = '头像上传失败：$e');
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
