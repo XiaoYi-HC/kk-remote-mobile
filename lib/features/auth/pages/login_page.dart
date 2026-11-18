@@ -47,6 +47,13 @@ class _LoginPageState extends State<LoginPage> {
       _preferCode = false;
     }
     _agreed = context.read<SettingsProvider>().protocolAgreed;
+    // 冷启动时后端配置可能尚未返回：进入登录页后自动补拉一次，
+    // 避免先按默认值展示后台已关闭的登录方式。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final config = context.read<ConfigProvider>();
+      if (!config.loadedOnce) config.load();
+    });
   }
 
   @override
@@ -279,6 +286,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildFormCard(ConfigProvider config, AuthProvider auth) {
+    // 配置未就绪时不展示任何登录方式，避免先出现后台已关闭的入口。
+    if (!config.loadedOnce) {
+      return _buildConfigPlaceholder(config);
+    }
     final phoneEnabled = config.loginEnabled('phone');
     final passwordEnabled = config.loginEnabled('password');
     final useCode = _useCodeMode(config);
@@ -336,14 +347,6 @@ class _LoginPageState extends State<LoginPage> {
           if (_inlineError != null) ...[
             const SizedBox(height: 14),
             _ErrorBanner(text: _inlineError!),
-          ],
-          if (config.error != null && config.loadedOnce == false) ...[
-            const SizedBox(height: 14),
-            _ErrorBanner(
-              text: '登录配置读取失败，已按默认方式展示。',
-              actionLabel: '重试',
-              onAction: config.refresh,
-            ),
           ],
           const SizedBox(height: 20),
           AppPrimaryButton(
@@ -422,6 +425,62 @@ class _LoginPageState extends State<LoginPage> {
                         onTap: auth.loading ? null : () => _startOAuth(channel),
                       ))
                   .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 登录配置加载中/失败时的占位卡片。
+  Widget _buildConfigPlaceholder(ConfigProvider config) {
+    final failed = config.error != null && !config.isLoading;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0A1F2329), blurRadius: 24, offset: Offset(0, 10)),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (failed)
+            const Icon(Icons.cloud_off_rounded, size: 28, color: AppColors.textTertiary)
+          else
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          const SizedBox(height: 14),
+          Text(
+            failed ? '登录配置读取失败' : '正在读取登录配置…',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            failed
+                ? '请检查网络后重试，配置同步完成后才会展示可用的登录方式'
+                : '请稍候，正在同步后台下发的登录方式',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5),
+          ),
+          if (failed) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: 160,
+              height: 42,
+              child: OutlinedButton(
+                onPressed: config.isLoading ? null : config.refresh,
+                child: const Text('重试'),
+              ),
             ),
           ],
         ],
