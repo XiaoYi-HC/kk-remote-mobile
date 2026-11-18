@@ -12,6 +12,7 @@ import '../../../widgets/app_sheet.dart';
 import '../../../widgets/app_select.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
+import '../../../widgets/user_avatar.dart';
 import '../../auth/state/auth_provider.dart';
 import '../state/support_chat_controller.dart';
 import '../state/support_notify_service.dart';
@@ -411,7 +412,33 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({required this.message});
 
+  /// 客服固定头像（本地资源，避免远程依赖）。
+  static const _agentAvatarAsset = 'assets/images/support_agent_avatar.png';
+
+  /// 用户未设置头像时的默认头像（本地资源）。
+  static const _userDefaultAvatarAsset = 'assets/images/user_default_avatar.png';
+
+  static const double _avatarSize = 40;
+
   final SupportMessage message;
+
+  Widget _agentAvatar() {
+    return ClipOval(
+      child: Image.asset(
+        _agentAvatarAsset,
+        width: _avatarSize,
+        height: _avatarSize,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => Container(
+          width: _avatarSize,
+          height: _avatarSize,
+          alignment: Alignment.center,
+          color: AppColors.primarySoft,
+          child: const Icon(Icons.support_agent_rounded, size: 22, color: AppColors.primary),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -433,6 +460,11 @@ class _MessageBubble extends StatelessWidget {
         : (message.senderName.isEmpty
             ? (message.isBot ? 'KK远程客服' : '客服')
             : message.senderName);
+    // 用户头像读取当前登录资料，未设置时使用本地默认图。
+    final avatar = context.select<AuthProvider, String>((auth) => auth.user?.avatar ?? '');
+    final accountName = context.select<AuthProvider, String>(
+      (auth) => auth.user?.displayName ?? '我',
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -440,15 +472,7 @@ class _MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!mine) ...[
-            CircleAvatar(
-              radius: 15,
-              backgroundColor: message.isBot ? AppColors.primarySoft : AppColors.successSoft,
-              child: Icon(
-                message.isBot ? Icons.smart_toy_outlined : Icons.support_agent_rounded,
-                size: 16,
-                color: message.isBot ? AppColors.primary : AppColors.success,
-              ),
-            ),
+            _agentAvatar(),
             const SizedBox(width: 8),
           ],
           Flexible(
@@ -550,10 +574,11 @@ class _MessageBubble extends StatelessWidget {
           ),
           if (mine) ...[
             const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 15,
-              backgroundColor: AppColors.primarySoft,
-              child: Icon(Icons.person_outline_rounded, size: 16, color: AppColors.primary),
+            UserAvatar(
+              size: _avatarSize,
+              avatar: avatar,
+              name: accountName,
+              fallbackAsset: _userDefaultAvatarAsset,
             ),
           ],
         ],
