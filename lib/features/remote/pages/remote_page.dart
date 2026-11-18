@@ -799,6 +799,39 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
+                  if (session.privacyBlackScreen)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: Colors.black.withAlpha(140),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.visibility_off_rounded,
+                                color: Colors.white70,
+                                size: 40,
+                              ),
+                              const SizedBox(height: 10),
+                              const Text(
+                                '隐私黑屏已开启',
+                                style: TextStyle(color: Colors.white, fontSize: 14),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                '被控电脑本地屏幕已隐藏',
+                                style: TextStyle(color: Colors.white54, fontSize: 11),
+                              ),
+                              const SizedBox(height: 14),
+                              FilledButton(
+                                onPressed: _togglePrivacy,
+                                child: const Text('关闭隐私黑屏'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   if (_gamepadVisible)
                     Positioned.fill(
                       child: SafeArea(
