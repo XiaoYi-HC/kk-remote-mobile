@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../state/settings_provider.dart';
+import '../../../widgets/app_select.dart';
+import '../../../widgets/mobile_page.dart';
 import '../../../widgets/settings_widgets.dart';
 
 class DisplaySettingsPage extends StatelessWidget {
@@ -13,15 +15,9 @@ class DisplaySettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('画质与显示'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '画质与显示',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('默认画质'),
@@ -79,18 +75,24 @@ class DisplaySettingsPage extends StatelessWidget {
               SettingsTile(
                 title: '编码器',
                 subtitle: _encoderLabel(settings.encoder),
-                trailing: DropdownButton<String>(
-                  value: settings.encoder,
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 'auto', child: Text('自动')),
-                    DropdownMenuItem(value: 'h264', child: Text('H.264')),
-                    DropdownMenuItem(value: 'hevc', child: Text('HEVC')),
-                    DropdownMenuItem(value: 'vp9', child: Text('VP9')),
-                    DropdownMenuItem(value: 'av1', child: Text('AV1')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) settings.setString(SettingsKeys.encoder, value);
+                trailing: AppSelectValue(
+                  valueLabel: _encoderShortLabel(settings.encoder),
+                  onTap: () async {
+                    final value = await showAppPicker<String>(
+                      context,
+                      title: '编码器',
+                      selected: settings.encoder,
+                      options: const [
+                        AppSelectOption(value: 'auto', label: '自动', subtitle: '根据设备能力自动选择'),
+                        AppSelectOption(value: 'h264', label: 'H.264', subtitle: '兼容性优先'),
+                        AppSelectOption(value: 'hevc', label: 'HEVC', subtitle: '更高压缩率，需双方支持'),
+                        AppSelectOption(value: 'vp9', label: 'VP9', subtitle: '开源编码'),
+                        AppSelectOption(value: 'av1', label: 'AV1', subtitle: '高压缩率，编码开销较高'),
+                      ],
+                    );
+                    if (value != null) {
+                      await settings.setString(SettingsKeys.encoder, value);
+                    }
                   },
                 ),
               ),
@@ -167,15 +169,21 @@ class DisplaySettingsPage extends StatelessWidget {
                 subtitle: settings.orientationLock == 'auto'
                     ? '跟随手机自动旋转'
                     : (settings.orientationLock == 'portrait' ? '锁定竖屏' : '锁定横屏'),
-                trailing: DropdownButton<String>(
-                  value: settings.orientationLock,
-                  underline: const SizedBox.shrink(),
-                  items: const [
-                    DropdownMenuItem(value: 'auto', child: Text('自动')),
-                    DropdownMenuItem(value: 'portrait', child: Text('竖屏')),
-                    DropdownMenuItem(value: 'landscape', child: Text('横屏')),
-                  ],
-                  onChanged: (value) async {
+                trailing: AppSelectValue(
+                  valueLabel: settings.orientationLock == 'auto'
+                      ? '自动'
+                      : (settings.orientationLock == 'portrait' ? '竖屏' : '横屏'),
+                  onTap: () async {
+                    final value = await showAppPicker<String>(
+                      context,
+                      title: '远程画面方向',
+                      selected: settings.orientationLock,
+                      options: const [
+                        AppSelectOption(value: 'auto', label: '自动', subtitle: '跟随手机自动旋转'),
+                        AppSelectOption(value: 'portrait', label: '竖屏', subtitle: '锁定竖屏方向'),
+                        AppSelectOption(value: 'landscape', label: '横屏', subtitle: '锁定横屏方向'),
+                      ],
+                    );
                     if (value == null) return;
                     await settings.setString(SettingsKeys.orientationLock, value);
                     if (value == 'auto') {
@@ -198,6 +206,21 @@ class DisplaySettingsPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _encoderShortLabel(String value) {
+    switch (value) {
+      case 'h264':
+        return 'H.264';
+      case 'hevc':
+        return 'HEVC';
+      case 'vp9':
+        return 'VP9';
+      case 'av1':
+        return 'AV1';
+      default:
+        return '自动';
+    }
   }
 
   String _encoderLabel(String value) {
