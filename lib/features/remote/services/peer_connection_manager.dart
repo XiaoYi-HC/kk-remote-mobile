@@ -80,6 +80,17 @@ class PeerConnectionManager {
     _pc = pc;
     await initRenderer();
 
+    // 主控端只接收画面，必须先声明 recvonly 的视频 transceiver，
+    // 否则 offer 中没有视频 m-line，被控端的视频轨道不会出现在 answer 里，表现为能看到界面但没有画面。
+    try {
+      await pc.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(direction: TransceiverDirection.RecvOnly),
+      );
+    } catch (error) {
+      if (kDebugMode) debugPrint('addTransceiver video failed: $error');
+    }
+
     pc.onIceCandidate = (candidate) {
       onIceCandidate?.call(candidate);
     };
