@@ -61,12 +61,23 @@ class ApiClient {
     _dio.options.baseUrl = normalized;
   }
 
+  /// 把服务端返回的相对地址转成可访问 URL。
+  ///
+  /// 以 `/` 开头的路径是站点根目录资源（如 `/uploads/avatars/x.png`），
+  /// 必须拼到域名根上，而不是拼到 `/api/v1` 前缀上。
   Uri resolveUri(String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return Uri.parse(path);
     }
-    final base = _baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/';
-    return Uri.parse(base).resolve(path.startsWith('/') ? path.substring(1) : path);
+    final base = Uri.parse(_baseUrl);
+    if (path.startsWith('/')) {
+      final origin = base.replace(path: '/', query: null, fragment: null);
+      return origin.resolve(path);
+    }
+    final withSlash = base.path.endsWith('/')
+        ? base
+        : base.replace(path: '${base.path}/');
+    return withSlash.resolve(path);
   }
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) {
