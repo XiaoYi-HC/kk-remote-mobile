@@ -322,11 +322,17 @@ class _TaskFormState extends State<_TaskForm> {
   }
 
   Future<void> _pickDate() async {
+    final firstDate = DateTime.now().subtract(const Duration(days: 1));
+    final lastDate = DateTime.now().add(const Duration(days: 365));
+    // 编辑旧任务时 _triggerAt 可能早于 firstDate，直接传会触发 DatePicker 断言崩溃。
+    var initialDate = _triggerAt;
+    if (initialDate.isBefore(firstDate)) initialDate = firstDate;
+    if (initialDate.isAfter(lastDate)) initialDate = lastDate;
     final date = await showDatePicker(
       context: context,
-      initialDate: _triggerAt,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -342,6 +348,10 @@ class _TaskFormState extends State<_TaskForm> {
   void _submit() {
     if (_deviceId <= 0) {
       setState(() => _error = '请选择目标设备');
+      return;
+    }
+    if (_repeatRule == 'none' && !_triggerAt.isAfter(DateTime.now())) {
+      setState(() => _error = '触发时间需晚于当前时间');
       return;
     }
     Navigator.of(context).pop(
