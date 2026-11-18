@@ -85,14 +85,17 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
         ),
         title: const Text('账号中心'),
       ),
-      body: _loading && user == null
-          ? const LoadingView()
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                children: [
+      body: Column(
+        children: [
+          Expanded(
+            child: _loading && user == null
+                ? const LoadingView()
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      children: [
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -255,18 +258,33 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  OutlinedButton(
-                    onPressed: _logout,
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(46),
-                      foregroundColor: AppColors.danger,
-                      side: const BorderSide(color: Color(0x33E5484D)),
-                    ),
-                    child: const Text('退出登录'),
-                  ),
                 ],
+                    ),
+                  ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 10),
+              child: SizedBox(
+                height: 44,
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _logout,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: AppColors.danger,
+                    side: const BorderSide(color: Colors.white),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  child: const Text('退出登录'),
+                ),
               ),
             ),
+          ),
+        ],
+      ),
     );
   }
 }
