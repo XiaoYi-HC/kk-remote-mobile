@@ -13,17 +13,18 @@ import '../../auth/state/auth_provider.dart';
 import '../../../widgets/mobile_page.dart';
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.embedded = false});
+
+  /// 作为"我的"Tab 内嵌时不需要独立页面骨架。
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
-    return MobilePage(
-      title: '设置',
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-        children: [
+    final content = ListView(
+      padding: EdgeInsets.fromLTRB(16, 4, 16, embedded ? 110 : 32),
+      children: [
           AppCard(
             onTap: () {
               if (auth.isLoggedIn) {
@@ -246,8 +247,11 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         ],
-      ),
     );
+    if (embedded) {
+      return SafeArea(bottom: false, child: content);
+    }
+    return MobilePage(title: '设置', child: content);
   }
 
   String _qualityLabel(String preset) {
