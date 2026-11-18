@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../state/app_services.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class NotificationSettingsPage extends StatelessWidget {
   const NotificationSettingsPage({super.key});
@@ -24,15 +25,9 @@ class NotificationSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('通知与后台'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '通知与后台',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('通知'),
