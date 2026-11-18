@@ -37,7 +37,11 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 1),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadAll());
   }
 
@@ -92,7 +96,7 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
 
   Future<void> _chooseDirectory() async {
     final path = await FilePicker.platform.getDirectoryPath(dialogTitle: '选择下载目录');
-    if (path == null) return;
+    if (path == null || !mounted) return;
     await context.read<SettingsProvider>().setString(SettingsKeys.downloadDir, path);
     await _loadFiles();
     if (mounted) setState(() {});
@@ -122,9 +126,14 @@ class _DownloadsPageState extends State<DownloadsPage> with SingleTickerProvider
       danger: true,
     );
     if (!ok) return;
-    await entity.delete(recursive: true);
-    await _loadFiles();
-    if (mounted) setState(() {});
+    try {
+      await entity.delete(recursive: true);
+      await _loadFiles();
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('删除失败：$e')));
+    }
   }
 
   Future<void> _clearCache() async {
