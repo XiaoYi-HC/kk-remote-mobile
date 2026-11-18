@@ -23,7 +23,7 @@ class SettingsPage extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final content = ListView(
-      padding: EdgeInsets.fromLTRB(16, 4, 16, embedded ? 110 : 32),
+      padding: EdgeInsets.only(top: 4, bottom: embedded ? 110 : 32),
       children: [
           AppCard(
             onTap: () {
@@ -33,12 +33,12 @@ class SettingsPage extends StatelessWidget {
                 context.go('/login');
               }
             },
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
             child: Row(
               children: [
                 Container(
-                  width: 50,
-                  height: 50,
+                  width: 64,
+                  height: 64,
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
                     color: AppColors.primarySoft,
@@ -47,27 +47,25 @@ class SettingsPage extends StatelessWidget {
                   child: Text(
                     auth.displayName.characters.first,
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 26,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primary,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        auth.displayName,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        _identityLabel(auth),
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 4),
                       Text(
-                        auth.isLoggedIn
-                            ? '${Formatters.maskedAccount(auth.user?.phone)} · 已登录'
-                            : '登录后同步设备、消息与设置',
-                        style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                        auth.isLoggedIn ? auth.displayName : '登录后同步设备、消息与设置',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -78,6 +76,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SettingsSectionTitle('显示与操控'),
           SettingsGroup(
+            padding: EdgeInsets.zero,
             children: [
               SettingsTile(
                 title: '画质与显示',
@@ -108,6 +107,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SettingsSectionTitle('连接与提醒'),
           SettingsGroup(
+            padding: EdgeInsets.zero,
             children: [
               SettingsTile(
                 title: '连接与网络',
@@ -132,6 +132,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SettingsSectionTitle('自动化与文件'),
           SettingsGroup(
+            padding: EdgeInsets.zero,
             children: [
               SettingsTile(
                 title: '定时任务',
@@ -156,6 +157,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SettingsSectionTitle('账号与安全'),
           SettingsGroup(
+            padding: EdgeInsets.zero,
             children: [
               SettingsTile(
                 title: '安全与隐私',
@@ -180,6 +182,7 @@ class SettingsPage extends StatelessWidget {
           ),
           const SettingsSectionTitle('帮助与关于'),
           SettingsGroup(
+            padding: EdgeInsets.zero,
             children: [
               SettingsTile(
                 title: '帮助与反馈',
@@ -216,29 +219,6 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
-          if (auth.isLoggedIn) ...[
-            const SizedBox(height: 20),
-            OutlinedButton(
-              onPressed: () async {
-                final ok = await showConfirmDialog(
-                  context,
-                  title: '退出登录',
-                  content: '退出后需要重新登录才能同步设备与消息，是否继续？',
-                  confirmText: '退出登录',
-                  danger: true,
-                );
-                if (!ok) return;
-                await auth.logout();
-                if (context.mounted) context.go('/login');
-              },
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
-                foregroundColor: AppColors.danger,
-                side: const BorderSide(color: Color(0x33E5484D)),
-              ),
-              child: const Text('退出登录'),
-            ),
-          ],
           const SizedBox(height: 20),
           const Center(
             child: Text(
@@ -252,6 +232,17 @@ class SettingsPage extends StatelessWidget {
       return SafeArea(bottom: false, child: content);
     }
     return MobilePage(title: '设置', child: content);
+  }
+
+  /// 优先展示手机号，其次邮箱。
+  String _identityLabel(AuthProvider auth) {
+    if (!auth.isLoggedIn) return '未登录';
+    final phone = auth.user?.phone ?? '';
+    if (phone.isNotEmpty) return Formatters.maskedAccount(phone);
+    final email = auth.user?.email ?? '';
+    if (email.isNotEmpty) return email;
+    final username = auth.user?.username ?? '';
+    return username.isNotEmpty ? username : auth.displayName;
   }
 
   String _qualityLabel(String preset) {
