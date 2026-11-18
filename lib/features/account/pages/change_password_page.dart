@@ -43,7 +43,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
             newPassword: _newController.text,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('密码已修改')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('密码已修改，其他设备需重新登录')),
+      );
       context.pop();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
