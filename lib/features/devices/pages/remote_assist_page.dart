@@ -24,14 +24,21 @@ class _RemoteAssistPageState extends State<RemoteAssistPage> {
     super.dispose();
   }
 
-  void _connect() {
+  bool _navigating = false;
+
+  Future<void> _connect() async {
+    if (_navigating) return;
     final code = _codeController.text.trim();
     if (code.isEmpty) {
       setState(() => _error = '请输入被控端识别码');
       return;
     }
-    setState(() => _error = null);
-    context.push('/connect', extra: ConnectArgs(deviceCode: code));
+    setState(() {
+      _error = null;
+      _navigating = true;
+    });
+    await context.push('/connect', extra: ConnectArgs(deviceCode: code));
+    if (mounted) setState(() => _navigating = false);
   }
 
   @override
