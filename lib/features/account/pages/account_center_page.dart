@@ -37,8 +37,11 @@ class _AccountCenterPageState extends State<AccountCenterPage> {
     }
     setState(() => _loading = true);
     await auth.refreshProfile();
+    if (!mounted) return;
     try {
-      _identities = await context.read<AppServices>().accountApi.identities();
+      final identities = await context.read<AppServices>().accountApi.identities();
+      if (!mounted) return;
+      setState(() => _identities = identities);
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
