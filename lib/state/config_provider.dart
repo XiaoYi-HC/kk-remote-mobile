@@ -27,6 +27,14 @@ class ConfigProvider extends ChangeNotifier {
   bool _loading = false;
   bool _loadedOnce = false;
   String? _error;
+  int _retryCount = 0;
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   BootstrapConfig get config => _config;
   bool get isLoading => _loading;
@@ -42,7 +50,7 @@ class ConfigProvider extends ChangeNotifier {
   bool registerEnabled(String method) => _config.registerEnabled(method);
 
   Future<void> load() async {
-    if (_loading) return;
+    if (_loading || _disposed) return;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -51,6 +59,7 @@ class ConfigProvider extends ChangeNotifier {
       final result = await _authApi.bootstrap(platform: platform, version: '1.0.0');
       _config = result;
       _loadedOnce = true;
+      _retryCount = 0;
       final apiBase = _config.apiBaseUrl;
       final signaling = _config.signalingUrl;
       if (apiBase.isNotEmpty || signaling.isNotEmpty) {
@@ -66,9 +75,17 @@ class ConfigProvider extends ChangeNotifier {
       _api.updateBaseUrl(_settings.resolvedApiBaseUrl);
     } catch (error) {
       _error = error.toString();
+      // 冷启动时网络栈可能尚未就绪：自动重试两次，避免登录页先按默认方式展示。
+      if (_retryCount < 2 && !_disposed) {
+        _retryCount++;
+        final attempt = _retryCount;
+        Future<void>.delayed(Duration(milliseconds: 700 * attempt), () {
+          if (!_disposed) load();
+        });
+      }
     } finally {
       _loading = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
