@@ -198,14 +198,6 @@ class SettingsPage extends StatelessWidget {
                 subtitle: '版本 ${AppConstants.appVersion}',
                 leading: const IconBadge(icon: Icons.info_outline_rounded),
                 onTap: () => context.push('/settings/about'),
-              ),
-              SettingsTile(
-                title: '开发者选项',
-                subtitle: settings.apiBaseUrlOverride.isEmpty
-                    ? '使用后台下发的服务地址'
-                    : '已覆盖开发环境地址',
-                leading: const IconBadge(icon: Icons.developer_mode_rounded),
-                onTap: () => context.push('/settings/developer'),
                 showDivider: false,
               ),
             ],
