@@ -31,6 +31,7 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _picker = ImagePicker();
   bool _sendingImage = false;
+  Timer? _clockTimer;
 
   /// 历史加载中：此时不自动滚动到底部，避免打断查阅。
   bool _loadingHistory = false;
@@ -49,6 +50,10 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
     _chat = SupportChatController(services: context.read<AppServices>());
     _chat.addListener(_onChatChanged);
     _chat.init();
+    // 在线时段会随时间变化，定时重建以刷新顶部状态。
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   /// 键盘弹出/收起时保持列表滚到底部，输入框跟随键盘。
@@ -57,13 +62,17 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
     super.didChangeMetrics();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      final position = _scrollController.position;
+      // 用户正在回看历史时不要强行拉回底部。
+      if (position.maxScrollExtent - position.pixels > 160) return;
+      _scrollController.jumpTo(position.maxScrollExtent);
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _clockTimer?.cancel();
     SupportNotifyService.instance.leaveConversation();
     _chat.removeListener(_onChatChanged);
     _chat.dispose();
@@ -116,16 +125,31 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
   Future<void> _send() async {
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
-    _inputController.clear();
-    await _chat.sendText(text);
+    final ok = await _chat.sendText(text);
+    if (!mounted) return;
+    if (ok) {
+      // 发送成功才清空输入框，失败时保留内容方便重发。
+      _inputController.clear();
+    } else {
+      _inputController.text = text;
+    }
   }
 
   Future<void> _pickImage() async {
-    final image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 82);
-    if (image == null) return;
-    setState(() => _sendingImage = true);
-    await _chat.sendImage(image.path);
-    if (mounted) setState(() => _sendingImage = false);
+    try {
+      final image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 82);
+      if (image == null || !mounted) return;
+      setState(() => _sendingImage = true);
+      await _chat.sendImage(image.path);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择图片失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingImage = false);
+    }
   }
 
   Future<void> _showEmoji() async {
@@ -159,14 +183,16 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
   }
 
   Future<void> _transferHuman() async {
-    await _chat.transferHuman();
+    final ok = await _chat.transferHuman();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _chat.queuePosition > 0
-              ? '已转人工，当前排队第 ${_chat.queuePosition} 位'
-              : '已为您转接人工客服',
+          !ok
+              ? '转人工失败：${_chat.error ?? '请稍后重试'}'
+              : (_chat.queuePosition > 0
+                  ? '已转人工，当前排队第 ${_chat.queuePosition} 位'
+                  : '已为您转接人工客服'),
         ),
       ),
     );
@@ -214,9 +240,15 @@ class _SupportChatPageState extends State<SupportChatPage> with WidgetsBindingOb
       ),
     );
     if (score == null) return;
-    await _chat.rate(score, '');
+    final ok = await _chat.rate(score, '');
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('感谢您的评价')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? '感谢您的评价' : '评价失败：${_chat.error ?? '请稍后重试'}',
+        ),
+      ),
+    );
   }
 
   @override
