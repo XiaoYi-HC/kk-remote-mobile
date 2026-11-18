@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/platform/notification_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../state/app_services.dart';
 import '../../auth/state/auth_provider.dart';
@@ -31,6 +32,13 @@ class _HomeShellState extends State<HomeShell> {
     _TabItem(icon: Icons.desktop_windows_outlined, activeIcon: Icons.desktop_windows_rounded, label: '远程协助'),
     _TabItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: '我的'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // 客服/工单回复通知需要系统通知权限。
+    NotificationService.instance.requestPermission();
+  }
 
   @override
   void dispose() {
