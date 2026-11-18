@@ -15,6 +15,7 @@ import '../../../state/app_services.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class GamepadSettingsPage extends StatefulWidget {
   const GamepadSettingsPage({super.key});
@@ -160,15 +161,9 @@ class _GamepadSettingsPageState extends State<GamepadSettingsPage> {
     final gyroSensitivity = settings.getDouble(_gyroSensitivityKey, fallback: 1.0);
     final l2 = settings.getString(_l2Key);
     final r2 = settings.getString(_r2Key);
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('游戏手柄与虚拟按键'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '游戏手柄与虚拟按键',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSectionTitle('当前虚拟按键布局'),
