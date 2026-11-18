@@ -165,23 +165,19 @@ class SettingsSectionTitle extends StatelessWidget {
   }
 }
 
+/// 列表项前置图标：只保留图标本体，无彩色底块，颜色统一为纯黑。
 class IconBadge extends StatelessWidget {
-  const IconBadge({super.key, required this.icon, this.color = AppColors.primary, this.size = 32});
+  const IconBadge({super.key, required this.icon, this.size = 32});
 
   final IconData icon;
-  final Color color;
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        color: color.withAlpha(24),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Icon(icon, size: size * 0.55, color: color),
+      child: Icon(icon, size: size * 0.62, color: Colors.black),
     );
   }
 }
