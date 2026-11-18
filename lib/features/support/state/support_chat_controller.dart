@@ -24,7 +24,6 @@ class SupportChatController extends ChangeNotifier {
   bool agentTyping = false;
   String fallback = '未匹配到答案，请转人工或提交留言工单。';
   int rating = 0;
-  List<SupportConversation> history = [];
 
   bool get isLoggedIn => services.api.token != null && services.api.token!.isNotEmpty;
   bool get hasAgent => conversation?.isHumanOnline ?? false;
@@ -37,34 +36,82 @@ class SupportChatController extends ChangeNotifier {
     return '机器人在线';
   }
 
+  // ---- 历史会话懒加载 ----
+  bool historyLoading = false;
+  bool historyExhausted = false;
+  bool _historyListLoaded = false;
+  final List<SupportConversation> _historyConversations = [];
+  int _historyCursor = 0;
+
+  int _currentConversationId = 0;
+
+  /// 当前是否有更多历史会话可加载。
+  bool get hasMoreHistory => !historyExhausted;
+
+  /// 每次进入聊天页都开启全新会话：不读取旧会话，也不展示历史消息。
   Future<void> init() async {
     loading = true;
+    historyLoading = false;
+    historyExhausted = false;
+    _historyListLoaded = false;
+    _historyConversations.clear();
+    _historyCursor = 0;
     error = null;
     notifyListeners();
     try {
       fallback = await services.supportApi.fallbackText();
-      history = await services.supportApi.conversations();
-      SupportConversation? target;
-      if (history.isNotEmpty) {
-        final open = history.where((item) => !item.isClosed).toList();
-        target = open.isNotEmpty ? open.first : null;
-      }
-      target ??= await services.supportApi.createConversation();
-      conversation = target;
-      final result = await services.supportApi.messages(target.id);
-      messages = result.messages.map(_normalize).toList();
-      if (result.conversation != null) {
-        conversation = result.conversation;
-      }
-      await _connectSocket(target.id);
-      if (target.unreadUser > 0) {
-        _socket.markRead(target.id);
-      }
+      final created = await services.supportApi.createConversation(forceNew: true);
+      conversation = created;
+      _currentConversationId = created.id;
+      messages = [];
+      await _connectSocket(created.id);
       unawaited(_refreshAfterDelay());
     } catch (e) {
       error = e.toString();
     } finally {
       loading = false;
+      notifyListeners();
+    }
+  }
+
+  /// 向上回看时按会话逐个加载更早的历史记录（只读查阅，不参与发送）。
+  Future<void> loadHistoryPage() async {
+    if (historyLoading || historyExhausted) return;
+    final conv = conversation;
+    if (conv == null) return;
+    historyLoading = true;
+    error = null;
+    notifyListeners();
+    try {
+      if (!_historyListLoaded) {
+        final list = await services.supportApi.conversations();
+        _historyConversations
+          ..clear()
+          ..addAll(list.where((item) => item.id != conv.id));
+        _historyListLoaded = true;
+      }
+      if (_historyCursor >= _historyConversations.length) {
+        historyExhausted = true;
+        return;
+      }
+      final target = _historyConversations[_historyCursor];
+      final result = await services.supportApi.messages(target.id);
+      _historyCursor++;
+      // 历史仅保留对话内容，过滤系统提示，便于查阅。
+      final older = result.messages
+          .map(_normalize)
+          .where((item) => !item.isSystem)
+          .toList();
+      if (older.isNotEmpty) {
+        messages = [...older, ...messages];
+      }
+      if (_historyCursor >= _historyConversations.length) {
+        historyExhausted = true;
+      }
+    } catch (e) {
+      error = e.toString();
+    } finally {
+      historyLoading = false;
       notifyListeners();
     }
   }
@@ -86,7 +133,20 @@ class SupportChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 判断事件是否属于当前会话。事件未携带会话 ID 时按当前会话处理。
+  bool _belongsToCurrentConversation(SupportSocketEvent event) {
+    if (_currentConversationId == 0) return true;
+    final data = event.data;
+    var id = asInt(data['conversationId']);
+    if (id == 0 && data['message'] is Map) {
+      id = asInt(asMap(data['message'])['conversationId']);
+    }
+    return id == 0 || id == _currentConversationId;
+  }
+
   void _handleSocketEvent(SupportSocketEvent event) {
+    // 只处理当前新会话的事件，避免旧会话消息串流到本次聊天。
+    if (!_belongsToCurrentConversation(event)) return;
     switch (event.type) {
       case 'support.ready':
         socketReady = true;
