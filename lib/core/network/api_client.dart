@@ -273,9 +273,12 @@ class ApiClient {
         if (kDebugMode) {
           debugPrint('API error: ${error.message}');
         }
+        // 无响应的底层错误（DNS、TLS、证书、连接被重置等）本质是网络不可用，
+        // 不能统一当成服务端 500 误导用户。
+        if (response == null) return NetworkUnavailableException();
         return ApiException(
-          _statusMessage(response?.statusCode ?? 500),
-          statusCode: response?.statusCode,
+          _statusMessage(response.statusCode ?? 500),
+          statusCode: response.statusCode,
         );
     }
   }
