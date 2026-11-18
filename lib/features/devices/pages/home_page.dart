@@ -370,8 +370,8 @@ class _HomePageState extends State<HomePage> {
                     icon: isLoggedIn ? Icons.devices_other_rounded : Icons.login_rounded,
                     title: isLoggedIn ? '还没有绑定设备' : '登录后查看已绑定设备',
                     description: isLoggedIn
-                        ? '输入被控电脑的识别码与验证码连接，成功后会自动保存到设备列表'
-                        : '未登录也可以使用识别码进行临时连接',
+                        ? '在「远程协助」输入被控电脑的识别码连接，成功后会自动保存到设备列表'
+                        : '登录后即可同步设备列表与连接记录',
                     action: FilledButton.icon(
                       onPressed: () => _openConnect(ConnectArgs(castMode: _castMode)),
                       icon: const Icon(Icons.add_link_rounded, size: 18),
@@ -382,13 +382,13 @@ class _HomePageState extends State<HomePage> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 110),
                   sliver: _buildDeviceSliver(visible, devices),
                 ),
               if (devices.lanDevices.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -433,6 +433,11 @@ class _HomePageState extends State<HomePage> {
           ),
           const Spacer(),
           IconButton(
+            tooltip: '扫一扫',
+            onPressed: () => context.push('/scan'),
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 22),
+          ),
+          IconButton(
             tooltip: '消息中心',
             onPressed: () async {
               await context.push('/account/messages');
@@ -443,13 +448,8 @@ class _HomePageState extends State<HomePage> {
             icon: Badge(
               isLabelVisible: unread > 0,
               label: Text(unread > 99 ? '99+' : '$unread'),
-              child: const Icon(Icons.notifications_none_rounded, size: 24),
+              child: const Icon(Icons.notifications_none_rounded, size: 23),
             ),
-          ),
-          IconButton(
-            tooltip: '设置',
-            onPressed: () => context.push('/settings'),
-            icon: const Icon(Icons.settings_outlined, size: 23),
           ),
           GestureDetector(
             onTap: () {
@@ -530,28 +530,10 @@ class _HomePageState extends State<HomePage> {
                   SizedBox(
                     width: itemWidth,
                     child: QuickActionCard(
-                      icon: Icons.qr_code_scanner_rounded,
-                      title: '扫码连接',
-                      subtitle: '扫描电脑二维码',
-                      onTap: () => context.push('/scan'),
-                    ),
-                  ),
-                  SizedBox(
-                    width: itemWidth,
-                    child: QuickActionCard(
                       icon: Icons.wifi_find_rounded,
                       title: '局域网扫描',
                       subtitle: '同 WiFi 直连',
                       onTap: _openLanScan,
-                    ),
-                  ),
-                  SizedBox(
-                    width: itemWidth,
-                    child: QuickActionCard(
-                      icon: Icons.dialpad_rounded,
-                      title: '识别码',
-                      subtitle: '输入码连接',
-                      onTap: () => _openConnect(ConnectArgs(castMode: _castMode)),
                     ),
                   ),
                   SizedBox(
