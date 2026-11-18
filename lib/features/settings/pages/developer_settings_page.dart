@@ -9,6 +9,7 @@ import '../../../state/settings_provider.dart';
 import '../../../widgets/app_button.dart';
 import '../../../widgets/app_text_field.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class DeveloperSettingsPage extends StatefulWidget {
   const DeveloperSettingsPage({super.key});
@@ -84,15 +85,9 @@ class _DeveloperSettingsPageState extends State<DeveloperSettingsPage> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     final config = context.watch<ConfigProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('开发者选项'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '开发者选项',
+      child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Container(
