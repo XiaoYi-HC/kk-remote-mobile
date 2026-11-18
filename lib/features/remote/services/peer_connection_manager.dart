@@ -201,8 +201,12 @@ class PeerConnectionManager {
     int? sdpMLineIndex,
   }) async {
     if (candidate.isEmpty) return;
+    // iOS 原生实现会对 sdpMid 调用 stdString，传入 null(NSNull) 会直接崩溃，
+    // 部分候选（尤其是被控端 webrtc-rs 发出的）可能缺少 sdpMid/sdpMLineIndex，这里统一补默认值。
+    final mid = (sdpMid == null || sdpMid.isEmpty) ? '0' : sdpMid;
+    final mLineIndex = sdpMLineIndex ?? 0;
     try {
-      await _pc?.addCandidate(RTCIceCandidate(candidate, sdpMid, sdpMLineIndex));
+      await _pc?.addCandidate(RTCIceCandidate(candidate, mid, mLineIndex));
     } catch (error) {
       if (kDebugMode) debugPrint('addCandidate failed: $error');
     }
