@@ -108,10 +108,12 @@ class _ConnectPageState extends State<ConnectPage> {
   }
 
   Future<void> _connect() async {
+    if (_connecting) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
     final devices = context.read<DevicesProvider>();
     if (!await _confirmMobileNetwork()) return;
+    if (!mounted) return;
     setState(() {
       _connecting = true;
       _error = null;
