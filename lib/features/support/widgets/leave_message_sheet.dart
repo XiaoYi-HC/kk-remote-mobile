@@ -9,6 +9,7 @@ import '../../../data/models/common.dart';
 import '../../../data/models/support.dart';
 import '../../../state/app_services.dart';
 import '../../../widgets/app_button.dart';
+import '../../../widgets/app_select.dart';
 import '../../../widgets/app_sheet.dart';
 import '../../../widgets/app_text_field.dart';
 
@@ -174,13 +175,14 @@ class _LeaveMessageFormState extends State<LeaveMessageForm> {
               },
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _problemType,
-              decoration: const InputDecoration(labelText: '问题类型'),
-              items: AppConstants.registerProblemTypes
-                  .map((type) => DropdownMenuItem(value: type, child: Text(type)))
-                  .toList(),
-              onChanged: (value) => setState(() => _problemType = value ?? _problemType),
+            AppSelectField<String>(
+              label: '问题类型',
+              valueLabel: _problemType,
+              options: [
+                for (final type in AppConstants.registerProblemTypes)
+                  AppSelectOption(value: type, label: type),
+              ],
+              onChanged: (value) => setState(() => _problemType = value),
             ),
             const SizedBox(height: 12),
             AppTextField(
