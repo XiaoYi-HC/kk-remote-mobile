@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,6 +12,7 @@ import '../../devices/pages/home_page.dart';
 import '../../devices/pages/remote_assist_page.dart';
 import '../../settings/pages/settings_page.dart';
 import '../../support/state/support_notify_service.dart';
+import '../widgets/native_liquid_tab_bar.dart';
 
 /// 登录后的主框架：底部悬浮 Liquid Glass 标签栏 + 三个页面。
 class HomeShell extends StatefulWidget {
@@ -91,6 +93,8 @@ class _HomeShellState extends State<HomeShell> {
     }
     final media = MediaQuery.of(context);
     final barInset = 86 + media.padding.bottom;
+    // iOS 使用原生 SwiftUI Liquid Glass 标签栏，其它平台使用 Flutter 实现。
+    final nativeBar = defaultTargetPlatform == TargetPlatform.iOS;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
@@ -110,13 +114,13 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ),
           Positioned(
-            left: 20,
-            right: 20,
+            left: nativeBar ? 0 : 20,
+            right: nativeBar ? 0 : 20,
             bottom: 0,
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+                padding: EdgeInsets.fromLTRB(0, 0, 0, nativeBar ? 2 : 12),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
                   switchInCurve: Curves.easeOutCubic,
@@ -135,13 +139,27 @@ class _HomeShellState extends State<HomeShell> {
                             onTap: () => setState(() => _collapsed = false),
                           ),
                         )
-                      : _LiquidGlassTabBar(
-                          key: const ValueKey('bar'),
-                          items: _items,
-                          index: _index,
-                          specularShift: _specularShift,
-                          onChanged: _selectTab,
-                        ),
+                      : nativeBar
+                          ? NativeLiquidGlassTabBar(
+                              key: const ValueKey('native-bar'),
+                              index: _index,
+                              items: const [
+                                NativeLiquidTabItem(symbol: 'house.fill', label: '首页'),
+                                NativeLiquidTabItem(
+                                  symbol: 'desktopcomputer',
+                                  label: '远程协助',
+                                ),
+                                NativeLiquidTabItem(symbol: 'person.fill', label: '我的'),
+                              ],
+                              onChanged: _selectTab,
+                            )
+                          : _LiquidGlassTabBar(
+                              key: const ValueKey('bar'),
+                              items: _items,
+                              index: _index,
+                              specularShift: _specularShift,
+                              onChanged: _selectTab,
+                            ),
                 ),
               ),
             ),
