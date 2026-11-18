@@ -100,8 +100,12 @@ class _ScanPageState extends State<ScanPage>
     WidgetsBinding.instance.removeObserver(this);
     _hintTimer?.cancel();
     _controller.removeListener(_onScannerStateChanged);
-    unawaited(_controller.stop());
-    _controller.dispose();
+    // 先停流再释放，避免平台侧 stop/dispose 交错调用。
+    final controller = _controller;
+    unawaited(() async {
+      await controller.stop();
+      await controller.dispose();
+    }());
     _lineController.dispose();
     _pulseController.dispose();
     _flashController.dispose();
@@ -131,14 +135,19 @@ class _ScanPageState extends State<ScanPage>
   void _onScannerStateChanged() {
     if (!mounted) return;
     final value = _controller.value;
+    final denied =
+        value.error?.errorCode == MobileScannerErrorCode.permissionDenied;
     final changed = _initialized != value.isInitialized ||
         _torchState != value.torchState ||
-        _cameraError?.errorCode != value.error?.errorCode;
+        _cameraError?.errorCode != value.error?.errorCode ||
+        _permissionDenied != denied;
     if (!changed) return;
     setState(() {
       _initialized = value.isInitialized;
       _torchState = value.torchState;
       _cameraError = value.error;
+      // 运行中权限被系统收回时也要更新，否则重试按钮永远不会走"去设置"分支。
+      _permissionDenied = denied;
     });
   }
 
@@ -195,26 +204,30 @@ class _ScanPageState extends State<ScanPage>
       try {
         final map = asMap(jsonDecode(text));
         final code = asString(map['deviceCode'] ?? map['code'] ?? map['device']);
-        if (code.isNotEmpty) {
+        if (_isDeviceCode(code)) {
           return _ScanResult(code, asString(map['name'] ?? map['deviceName']));
         }
       } catch (_) {}
     }
     final uri = Uri.tryParse(text);
-    if (uri != null && (uri.scheme == 'kkremote' || uri.hasQuery)) {
+    if (uri != null &&
+        (uri.scheme == 'kkremote' || uri.scheme == 'http' || uri.scheme == 'https')) {
       final code = uri.queryParameters['deviceCode'] ??
           uri.queryParameters['code'] ??
           uri.queryParameters['device'];
-      if (code != null && code.isNotEmpty) {
+      if (code != null && _isDeviceCode(code)) {
         return _ScanResult(code, uri.queryParameters['name'] ?? '');
       }
     }
     final compact = text.replaceAll(RegExp(r'\s+'), '');
-    if (compact.length >= 6 && compact.length <= 24) {
+    if (_isDeviceCode(compact)) {
       return _ScanResult(compact, '');
     }
     return null;
   }
+
+  /// 设备识别码为 6~12 位数字，避免把网址/普通文本误当识别码。
+  bool _isDeviceCode(String value) => RegExp(r'^\d{6,12}$').hasMatch(value.trim());
 
   /// 相册识图：沿用 mobile_scanner 的图片分析能力。
   Future<void> _pickFromGallery() async {
@@ -517,7 +530,9 @@ class _ScanPageState extends State<ScanPage>
         color: Colors.black,
         child: SafeArea(
           child: Center(
-            child: Padding(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -567,6 +582,7 @@ class _ScanPageState extends State<ScanPage>
                   ),
                 ],
               ),
+            ),
             ),
           ),
         ),
