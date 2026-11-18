@@ -25,7 +25,7 @@ class SettingsPage extends StatelessWidget {
     final content = ListView(
       padding: EdgeInsets.only(top: 4, bottom: embedded ? 110 : 32),
       children: [
-          AppCard(
+          InkWell(
             onTap: () {
               if (auth.isLoggedIn) {
                 context.push('/account');
@@ -33,45 +33,47 @@ class SettingsPage extends StatelessWidget {
                 context.go('/login');
               }
             },
-            padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
-            child: Row(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: AppColors.primarySoft,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    auth.displayName.characters.first,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 14, 18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    alignment: Alignment.center,
+                    decoration: const BoxDecoration(
+                      color: AppColors.primarySoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      auth.displayName.characters.first,
+                      style: const TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _identityLabel(auth),
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        auth.isLoggedIn ? auth.displayName : '登录后同步设备、消息与设置',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                    ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _identityLabel(auth),
+                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          auth.isLoggedIn ? auth.displayName : '登录后同步设备、消息与设置',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
-              ],
+                  const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                ],
+              ),
             ),
           ),
           const SettingsSectionTitle('显示与操控'),
