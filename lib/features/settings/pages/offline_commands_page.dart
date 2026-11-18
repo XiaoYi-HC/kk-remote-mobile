@@ -107,16 +107,24 @@ class _OfflineCommandsPageState extends State<OfflineCommandsPage> {
   }
 
   Future<void> _showResults(OfflineCommand command) async {
+    final future =
+        context.read<AppServices>().automationApi.offlineCommandResults(command.id);
     await showAppSheet<void>(
       context,
       title: '执行记录',
       subtitle: command.command,
       heightFactor: 0.65,
       builder: (sheetContext) => FutureBuilder<List<OfflineCommandResult>>(
-        future: context.read<AppServices>().automationApi.offlineCommandResults(command.id),
+        future: future,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const LoadingView(message: '读取执行记录…');
+          }
+          if (snapshot.hasError) {
+            return InlineError(
+              message: snapshot.error.toString(),
+              onRetry: () => Navigator.of(sheetContext).pop(),
+            );
           }
           final list = snapshot.data ?? const [];
           if (list.isEmpty) {
