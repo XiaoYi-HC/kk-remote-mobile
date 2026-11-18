@@ -25,6 +25,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
+  DevicesProvider? _devices;
   bool _castMode = false;
   bool _handlingAccept = false;
 
@@ -32,8 +33,10 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     final devices = context.read<DevicesProvider>();
+    _devices = devices;
     devices.addListener(_handleIncoming);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       devices.load();
       final auth = context.read<AuthProvider>();
       if (auth.isLoggedIn) auth.refreshProfile(silent: true);
@@ -47,7 +50,8 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    context.read<DevicesProvider>().removeListener(_handleIncoming);
+    // dispose 阶段不能再通过 context 查 Provider，使用 initState 保存的实例。
+    _devices?.removeListener(_handleIncoming);
     _searchController.dispose();
     super.dispose();
   }
@@ -74,6 +78,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refresh() async {
     await context.read<DevicesProvider>().refresh();
+    if (!mounted) return;
     final auth = context.read<AuthProvider>();
     if (auth.isLoggedIn) await auth.refreshProfile(silent: true);
   }
@@ -367,7 +372,24 @@ class _HomePageState extends State<HomePage> {
               else if (visible.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
-                  child: EmptyState(
+                  child: devices.devices.isNotEmpty
+                      ? EmptyState(
+                          icon: Icons.filter_alt_off_rounded,
+                          title: '没有符合条件的设备',
+                          description: devices.favoriteOnly
+                              ? '当前只看收藏，试试关闭收藏筛选或清空搜索关键词'
+                              : '当前筛选/搜索条件下没有设备，清空筛选后重试',
+                          action: OutlinedButton(
+                            onPressed: () {
+                              devices.setKeyword('');
+                              devices.setGroup(null);
+                              if (devices.favoriteOnly) devices.toggleFavoriteFilter();
+                              _searchController.clear();
+                            },
+                            child: const Text('清空筛选'),
+                          ),
+                        )
+                      : EmptyState(
                     icon: isLoggedIn ? Icons.devices_other_rounded : Icons.login_rounded,
                     title: isLoggedIn ? '还没有绑定设备' : '登录后查看已绑定设备',
                     description: isLoggedIn
