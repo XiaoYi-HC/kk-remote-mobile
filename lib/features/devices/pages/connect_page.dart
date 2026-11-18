@@ -165,7 +165,6 @@ class _ConnectPageState extends State<ConnectPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
-    final isGuest = auth.isGuest;
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -350,19 +349,6 @@ class _ConnectPageState extends State<ConnectPage> {
                               ),
                             ),
                           ],
-                          if (isGuest)
-                            Container(
-                              margin: const EdgeInsets.only(top: 8),
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: AppColors.warningSoft,
-                                borderRadius: BorderRadius.circular(9),
-                              ),
-                              child: const Text(
-                                '游客模式仅可临时连接，登录后可保存设备与查看历史。',
-                                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                              ),
-                            ),
                         ],
                       ),
                     ),
