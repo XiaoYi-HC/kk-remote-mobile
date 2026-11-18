@@ -73,17 +73,18 @@ class _TwoFactorPageState extends State<TwoFactorPage> {
   }
 
   Future<void> _disable() async {
+    setState(() => _error = null);
+    final controller = TextEditingController();
     final code = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
-        final controller = TextEditingController();
         return AlertDialog(
           title: const Text('关闭两步验证'),
           content: TextField(
             controller: controller,
             autofocus: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
+            keyboardType: TextInputType.visiblePassword,
+            maxLength: 32,
             decoration: const InputDecoration(hintText: '6 位动态码或恢复码', counterText: ''),
           ),
           actions: [
@@ -99,6 +100,7 @@ class _TwoFactorPageState extends State<TwoFactorPage> {
         );
       },
     );
+    controller.dispose();
     if (code == null || code.isEmpty) return;
     setState(() => _loading = true);
     try {
