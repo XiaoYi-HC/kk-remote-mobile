@@ -31,6 +31,8 @@ class _MessageCenterPageState extends State<MessageCenterPage> {
   String _category = '';
   bool _loading = true;
   String? _error;
+  int _loadSeq = 0;
+  final Set<int> _reading = {};
 
   @override
   void initState() {
@@ -47,44 +49,55 @@ class _MessageCenterPageState extends State<MessageCenterPage> {
       });
       return;
     }
+    final seq = ++_loadSeq;
+    final services = context.read<AppServices>();
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final result = await context.read<AppServices>().accountApi.messages(
+      final result = await services.accountApi.messages(
             category: _category.isEmpty ? null : _category,
-            pageSize: 50,
+            pageSize: 100,
           );
-      _messages = result.list;
-      _unread = result.unread;
+      // 快速切换分类时，旧请求的结果不能覆盖当前分类。
+      if (seq != _loadSeq || !mounted) return;
+      setState(() {
+        _messages = result.list;
+        _unread = result.unread;
+      });
     } catch (e) {
-      _error = e.toString();
+      if (seq == _loadSeq && mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (seq == _loadSeq && mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _open(MessageItem message) async {
-    if (!message.read) {
+    if (!message.read && _reading.add(message.id)) {
       try {
         await context.read<AppServices>().accountApi.readMessage(message.id);
+        if (!mounted) return;
         final index = _messages.indexWhere((item) => item.id == message.id);
         if (index >= 0) {
-          _messages[index] = MessageItem(
-            id: message.id,
-            category: message.category,
-            title: message.title,
-            content: message.content,
-            read: true,
-            refId: message.refId,
-            createdAt: message.createdAt,
-          );
-          _unread = (_unread - 1).clamp(0, _unread).toInt();
-          setState(() {});
+          setState(() {
+            _messages[index] = MessageItem(
+              id: message.id,
+              category: message.category,
+              title: message.title,
+              content: message.content,
+              read: true,
+              refId: message.refId,
+              createdAt: message.createdAt,
+            );
+            _unread = (_unread - 1).clamp(0, _unread).toInt();
+          });
         }
         context.read<AuthProvider>().refreshProfile(silent: true);
-      } catch (_) {}
+      } catch (_) {
+      } finally {
+        _reading.remove(message.id);
+      }
     }
     if (!mounted) return;
     await showDialog<void>(
