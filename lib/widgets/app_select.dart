@@ -152,7 +152,12 @@ class AppSelectField<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final T? current = options
-        .where((item) => item.label == valueLabel)
+        .where(
+          (item) =>
+              item.label == valueLabel ||
+              valueLabel.startsWith(item.label) ||
+              item.label.startsWith(valueLabel),
+        )
         .map<T?>((item) => item.value)
         .firstWhere((_) => true, orElse: () => null);
     final isEmpty = valueLabel.isEmpty;
