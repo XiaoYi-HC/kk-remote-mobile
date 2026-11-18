@@ -70,8 +70,10 @@ class Formatters {
     if (value.contains('@')) {
       final parts = value.split('@');
       final name = parts.first;
-      if (name.length <= 2) return '${name[0]}***@${parts.last}';
-      return '${name.substring(0, 2)}***@${parts.last}';
+      final domain = parts.length > 1 ? parts.last : '';
+      if (name.isEmpty) return value;
+      if (name.length <= 2) return '${name[0]}***@$domain';
+      return '${name.substring(0, 2)}***@$domain';
     }
     if (value.length >= 7) {
       return '${value.substring(0, 3)}****${value.substring(value.length - 4)}';
