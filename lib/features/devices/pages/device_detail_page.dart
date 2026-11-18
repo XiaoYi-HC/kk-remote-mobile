@@ -352,7 +352,6 @@ class _DeviceDetailPageState extends State<DeviceDetailPage> {
                 '${rule.remark.isEmpty ? '' : ' · ${rule.remark}'}',
             leading: IconBadge(
               icon: rule.ruleType == 'allow' ? Icons.check_circle_outline : Icons.block_outlined,
-              color: rule.ruleType == 'allow' ? AppColors.success : AppColors.danger,
             ),
             trailing: IconButton(
               onPressed: () => _deleteAccessRule(rule),
