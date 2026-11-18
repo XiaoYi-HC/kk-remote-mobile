@@ -27,10 +27,14 @@ class SupportApi {
     return asList(data).map((item) => SupportConversation.fromJson(asMap(item))).toList();
   }
 
-  Future<SupportConversation> createConversation({String clientType = 'mobile'}) async {
+  Future<SupportConversation> createConversation({
+    String clientType = 'mobile',
+    bool forceNew = false,
+  }) async {
     final data = await _api.post('/client/support/conversations', data: {
       'clientType': clientType,
       'source': 'mobile',
+      if (forceNew) 'forceNew': true,
     });
     return SupportConversation.fromJson(asMap(data));
   }
