@@ -307,8 +307,11 @@ class RemoteSessionProvider extends ChangeNotifier {
     manager.onIceCandidate = (candidate) {
       _signaling.sendIce(
         candidate: candidate.candidate ?? '',
-        sdpMid: candidate.sdpMid,
-        sdpMLineIndex: candidate.sdpMLineIndex,
+        // 保持字段非空，避免对端原生层把 null 当作对象处理导致崩溃。
+        sdpMid: (candidate.sdpMid == null || candidate.sdpMid!.isEmpty)
+            ? '0'
+            : candidate.sdpMid,
+        sdpMLineIndex: candidate.sdpMLineIndex ?? 0,
       );
     };
     _peer = manager;
