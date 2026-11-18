@@ -25,7 +25,7 @@ class SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
           if (leading != null) ...[
@@ -127,7 +127,7 @@ class SettingsGroup extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(children: children),
@@ -145,14 +145,15 @@ class SettingsSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 20, 16, 8),
+      padding: const EdgeInsets.fromLTRB(18, 22, 16, 8),
       child: Row(
         children: [
           Text(
             title,
             style: const TextStyle(
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
               color: AppColors.textSecondary,
             ),
           ),
