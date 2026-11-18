@@ -9,10 +9,12 @@ import '../../../data/models/support.dart';
 import '../../../state/app_services.dart';
 import '../../../state/config_provider.dart';
 import '../../../widgets/app_sheet.dart';
+import '../../../widgets/app_select.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
 import '../../auth/state/auth_provider.dart';
 import '../state/support_chat_controller.dart';
+import '../state/support_notify_service.dart';
 import '../widgets/leave_message_sheet.dart';
 
 class SupportChatPage extends StatefulWidget {
@@ -39,6 +41,7 @@ class _SupportChatPageState extends State<SupportChatPage> {
 
   @override
   void dispose() {
+    SupportNotifyService.instance.leaveConversation();
     _chat.removeListener(_onChatChanged);
     _chat.dispose();
     _inputController.dispose();
@@ -48,6 +51,10 @@ class _SupportChatPageState extends State<SupportChatPage> {
 
   void _onChatChanged() {
     if (!mounted) return;
+    final conversation = _chat.conversation;
+    if (conversation != null) {
+      SupportNotifyService.instance.enterConversation(conversation.id);
+    }
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -191,6 +198,7 @@ class _SupportChatPageState extends State<SupportChatPage> {
     }
     final conversation = _chat.conversation;
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         leading: IconButton(
           onPressed: () => context.pop(),
@@ -211,19 +219,28 @@ class _SupportChatPageState extends State<SupportChatPage> {
             onPressed: _chat.hasAgent ? null : _transferHuman,
             child: const Text('转人工', style: TextStyle(fontSize: 12)),
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_horiz_rounded, size: 21),
-            onSelected: (value) {
+          IconButton(
+            tooltip: '更多',
+            onPressed: () async {
+              final value = await showAppPicker<String>(
+                context,
+                title: '更多操作',
+                options: [
+                  const AppSelectOption(
+                    value: 'leave',
+                    label: '提交留言工单',
+                    subtitle: '上传问题说明与附件',
+                  ),
+                  const AppSelectOption(value: 'reload', label: '刷新消息'),
+                  if (conversation != null)
+                    const AppSelectOption(value: 'rate', label: '评价服务'),
+                ],
+              );
               if (value == 'leave') _openLeaveMessage();
-              if (value == 'rate') _rate();
               if (value == 'reload') _chat.reload();
+              if (value == 'rate') _rate();
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'leave', child: Text('提交留言工单')),
-              const PopupMenuItem(value: 'reload', child: Text('刷新消息')),
-              if (conversation != null)
-                const PopupMenuItem(value: 'rate', child: Text('评价服务')),
-            ],
+            icon: const Icon(Icons.more_horiz_rounded, size: 21),
           ),
         ],
       ),
@@ -298,56 +315,79 @@ class _SupportChatPageState extends State<SupportChatPage> {
   Widget _buildInputBar() {
     final enabled = _chat.conversation != null && !_chat.conversation!.isClosed;
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
       padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).viewInsets.bottom + 8),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: '发送图片',
-            onPressed: enabled && !_sendingImage ? _pickImage : null,
-            icon: _sendingImage
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.image_outlined, size: 22),
-          ),
-          IconButton(
-            tooltip: '表情',
-            onPressed: enabled ? _showEmoji : null,
-            icon: const Icon(Icons.emoji_emotions_outlined, size: 22),
-          ),
-          Expanded(
-            child: TextField(
-              controller: _inputController,
-              enabled: enabled,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              style: const TextStyle(fontSize: 13),
-              decoration: InputDecoration(
-                hintText: enabled ? '输入消息…' : '会话已结束',
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: const BoxDecoration(color: AppColors.background),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.border),
+          boxShadow: const [
+            BoxShadow(color: Color(0x0F1F2329), blurRadius: 16, offset: Offset(0, 4)),
+          ],
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: '发送图片',
+              onPressed: enabled && !_sendingImage ? _pickImage : null,
+              icon: _sendingImage
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.image_outlined, size: 22),
+            ),
+            IconButton(
+              tooltip: '表情',
+              onPressed: enabled ? _showEmoji : null,
+              icon: const Icon(Icons.emoji_emotions_outlined, size: 22),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _inputController,
+                enabled: enabled,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _send(),
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: enabled ? '输入消息…' : '会话已结束',
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.background,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 6),
-          IconButton.filled(
-            tooltip: '发送',
-            onPressed: enabled ? _send : null,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              minimumSize: const Size(40, 40),
+            const SizedBox(width: 4),
+            IconButton.filled(
+              tooltip: '发送',
+              onPressed: enabled ? _send : null,
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                minimumSize: const Size(40, 40),
+              ),
+              icon: const Icon(Icons.send_rounded, size: 18, color: Colors.white),
             ),
-            icon: const Icon(Icons.send_rounded, size: 18, color: Colors.white),
-          ),
-        ],
+            const SizedBox(width: 2),
+          ],
+        ),
       ),
     );
   }
@@ -422,22 +462,36 @@ class _MessageBubble extends StatelessWidget {
                   ),
                   child: message.isImage
                       ? ClipRRect(
-                          borderRadius: BorderRadius.circular(9),
+                          borderRadius: BorderRadius.circular(10),
                           child: message.attachmentUrl.isEmpty
                               ? Container(
-                                  width: 150,
-                                  height: 100,
+                                  width: 170,
+                                  height: 130,
                                   color: AppColors.background,
                                   child: const Icon(Icons.image_outlined, color: AppColors.textTertiary),
                                 )
                               : Image.network(
                                   message.attachmentUrl,
-                                  width: 150,
-                                  height: 100,
+                                  width: 170,
+                                  height: 130,
                                   fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, progress) {
+                                    if (progress == null) return child;
+                                    return Container(
+                                      width: 170,
+                                      height: 130,
+                                      color: AppColors.background,
+                                      alignment: Alignment.center,
+                                      child: const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    );
+                                  },
                                   errorBuilder: (context, error, stack) => Container(
-                                    width: 150,
-                                    height: 100,
+                                    width: 170,
+                                    height: 130,
                                     color: AppColors.background,
                                     child: const Icon(
                                       Icons.broken_image_outlined,
