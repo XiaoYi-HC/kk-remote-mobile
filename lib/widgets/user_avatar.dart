@@ -13,6 +13,7 @@ class UserAvatar extends StatelessWidget {
     this.name = '',
     this.background = AppColors.primarySoft,
     this.foreground = AppColors.primary,
+    this.fallbackAsset,
   });
 
   final double size;
@@ -20,6 +21,9 @@ class UserAvatar extends StatelessWidget {
   final String name;
   final Color background;
   final Color foreground;
+
+  /// 无头像或加载失败时使用的本地兜底图（不传则显示昵称首字）。
+  final String? fallbackAsset;
 
   String _resolveUrl(BuildContext context) {
     if (avatar.isEmpty) return '';
@@ -44,17 +48,31 @@ class UserAvatar extends StatelessWidget {
     );
   }
 
+  Widget _fallback() {
+    final asset = fallbackAsset;
+    if (asset == null || asset.isEmpty) return _initial();
+    return ClipOval(
+      child: Image.asset(
+        asset,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => _initial(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final url = _resolveUrl(context);
-    if (url.isEmpty) return _initial();
+    if (url.isEmpty) return _fallback();
     return ClipOval(
       child: Image.network(
         url,
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stack) => _initial(),
+        errorBuilder: (context, error, stack) => _fallback(),
         loadingBuilder: (context, child, progress) {
           if (progress == null) return child;
           return Container(
