@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
@@ -36,13 +37,50 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       _error = null;
     });
     try {
-      final detail = await context.read<AppServices>().supportApi.ticketDetail(widget.ticketId);
-      _detail = detail;
+      final services = context.read<AppServices>();
+      final detail = await services.supportApi.ticketDetail(widget.ticketId);
+      if (!mounted) return;
+      setState(() => _detail = detail);
     } catch (e) {
-      _error = e.toString();
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _openAttachment(TicketAttachment attachment) async {
+    final path = attachment.filePath;
+    if (path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('附件地址缺失，无法查看')),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(attachment.fileName),
+        content: SelectableText(path),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: path));
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('附件地址已复制')),
+                );
+              }
+            },
+            child: const Text('复制地址'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -58,7 +96,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       ),
       body: _loading && _detail == null
           ? const LoadingView()
-          : _error != null && _detail == null
+          : _error != null && _detail == null && widget.ticket == null
               ? EmptyState(
                   icon: Icons.cloud_off_rounded,
                   title: '无法读取工单',
@@ -212,31 +250,35 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           const Text('附件', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           ...(_detail!.attachments).map(
-            (attachment) => Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.attach_file_rounded, size: 16, color: AppColors.textSecondary),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      attachment.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11),
+            (attachment) => InkWell(
+              onTap: () => _openAttachment(attachment),
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.attach_file_rounded, size: 16, color: AppColors.textSecondary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        attachment.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
                     ),
-                  ),
-                  Text(
-                    Formatters.bytes(attachment.size),
-                    style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
-                  ),
-                ],
+                    Text(
+                      Formatters.bytes(attachment.size),
+                      style: const TextStyle(fontSize: 10, color: AppColors.textTertiary),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
