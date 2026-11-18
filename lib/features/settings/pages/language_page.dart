@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../state/app_services.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/settings_widgets.dart';
+import '../../../widgets/mobile_page.dart';
 
 class LanguagePage extends StatefulWidget {
   const LanguagePage({super.key});
@@ -57,15 +58,9 @@ class _LanguagePageState extends State<LanguagePage> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 19),
-        ),
-        title: const Text('语言与地区'),
-      ),
-      body: ListView(
+    return MobilePage(
+      title: '语言与地区',
+      child: ListView(
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           if (_loading) const LinearProgressIndicator(minHeight: 2),
