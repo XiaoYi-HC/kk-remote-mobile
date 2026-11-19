@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/utils/json_utils.dart';
+import '../../../state/app_services.dart';
 import '../state/connect_args.dart';
 
 /// 扫一扫页面。
@@ -170,6 +172,12 @@ class _ScanPageState extends State<ScanPage>
     for (final barcode in capture.barcodes) {
       final raw = barcode.rawValue;
       if (raw == null || raw.isEmpty) continue;
+      final loginTicket = _qrLoginTicket(raw);
+      if (loginTicket != null) {
+        _handled = true;
+        unawaited(_handleQrLogin(loginTicket));
+        return;
+      }
       final result = _parse(raw);
       if (result != null) {
         _handled = true;
@@ -178,6 +186,61 @@ class _ScanPageState extends State<ScanPage>
       }
     }
     _showHint('未识别到有效的 KK远程 设备二维码');
+  }
+
+  /// 桌面端扫码登录二维码：kkremote://login?ticket=xxx
+  String? _qrLoginTicket(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null) return null;
+    final isLogin = (uri.scheme == 'kkremote' && uri.host == 'login') ||
+        ((uri.scheme == 'https' || uri.scheme == 'http') &&
+            uri.path.contains('qr-login'));
+    if (!isLogin) return null;
+    final ticket = uri.queryParameters['ticket']?.trim() ?? '';
+    return ticket.isEmpty ? null : ticket;
+  }
+
+  Future<void> _handleQrLogin(String ticket) async {
+    final services = context.read<AppServices>();
+    // 先标记“已扫描”，桌面端可以立即提示用户去手机确认。
+    try {
+      await services.api.post('/client/auth/qr/scan', data: {'ticket': ticket});
+    } catch (_) {}
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认登录电脑端'),
+        content: const Text('确认在电脑上登录当前 KK远程 账号？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认登录'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed != true) {
+      _handled = false;
+      return;
+    }
+    try {
+      await services.api.post('/client/auth/qr/confirm', data: {'ticket': ticket});
+      if (!mounted) return;
+      _flashController.forward(from: 0);
+      _showHint('已确认登录，电脑端即将进入', force: true);
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (mounted) context.pop();
+    } catch (error) {
+      if (!mounted) return;
+      _showHint('登录确认失败：$error', force: true);
+      _handled = false;
+    }
   }
 
   Future<void> _succeed(_ScanResult result) async {
@@ -245,6 +308,12 @@ class _ScanPageState extends State<ScanPage>
       for (final barcode in barcodes) {
         final raw = barcode.rawValue;
         if (raw == null || raw.isEmpty) continue;
+        final loginTicket = _qrLoginTicket(raw);
+        if (loginTicket != null) {
+          _handled = true;
+          await _handleQrLogin(loginTicket);
+          return;
+        }
         final result = _parse(raw);
         if (result != null) {
           _handled = true;
