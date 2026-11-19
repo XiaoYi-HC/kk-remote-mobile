@@ -64,6 +64,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   bool _orientationLocked = false;
   bool _leaving = false;
   bool _showingTransport = false;
+  bool _noVideoCheckScheduled = false;
   bool _wasBackground = false;
   String? _lastClipboard;
   VirtualKeyLayout _layout = VirtualKeyLayout.defaultShooter();
@@ -141,10 +142,39 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           if (mounted) setState(() => _loadingVisible = false);
         });
       }
+      if (!_noVideoCheckScheduled) {
+        _noVideoCheckScheduled = true;
+        Future<void>.delayed(const Duration(seconds: 6), () {
+          if (!mounted || !_session.connected) return;
+          final width = _session.renderer?.value.width ?? 0;
+          if (width == 0) {
+            _showMessage('已连接但未收到画面，长按顶部延迟可查看画面诊断');
+          }
+        });
+      }
     } else if (_session.stage == RemoteStage.failed && !_loadingVisible) {
       setState(() => _loadingVisible = true);
     }
     setState(() {});
+  }
+
+  Future<void> _showVideoDiagnostics() async {
+    final info = _session.videoDiagnostics;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('画面诊断'),
+        content: SelectableText(
+          info.entries.map((entry) => '${entry.key}: ${entry.value}').join('\n'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadLayout() async {
@@ -958,12 +988,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   onTap: _showTransportDetails,
                                 ),
                                 const Spacer(),
-                                RemoteIndicator(
-                                  latencyMs: session.transport.rttMs,
-                                  lossRate: session.transport.lossRate,
-                                  trafficBytes: session.trafficBytes,
-                                  networkType: _networkLabel,
-                                  onTap: _showTransportDetails,
+                                GestureDetector(
+                                  onLongPress: _showVideoDiagnostics,
+                                  child: RemoteIndicator(
+                                    latencyMs: session.transport.rttMs,
+                                    lossRate: session.transport.lossRate,
+                                    trafficBytes: session.trafficBytes,
+                                    networkType: _networkLabel,
+                                    onTap: _showTransportDetails,
+                                  ),
                                 ),
                                 const SizedBox(width: 6),
                                 _circleButton(
