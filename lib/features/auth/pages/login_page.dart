@@ -54,7 +54,8 @@ class _LoginPageState extends State<LoginPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final config = context.read<ConfigProvider>();
-      if (!config.loadedOnce) config.load();
+      // 每次进入登录页都重新拉取，确保管理员刚关闭的登录方式立即生效。
+      config.load();
     });
   }
 
@@ -322,6 +323,9 @@ class _LoginPageState extends State<LoginPage> {
     final passwordEnabled = config.loginEnabled('password');
     final useCode = _useCodeMode(config);
     final noMethod = !phoneEnabled && !emailEnabled && !passwordEnabled;
+    final anyRegister = config.registerEnabled('phone') ||
+        config.registerEnabled('email') ||
+        config.registerEnabled('third_party');
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
@@ -419,24 +423,26 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ],
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                '还没有账号？',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-              TextButton(
-                onPressed: () => context.push('/register'),
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(44, 38),
-                  foregroundColor: AppColors.primary,
+          if (anyRegister) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  '还没有账号？',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
-                child: const Text('立即注册', style: TextStyle(fontSize: 13)),
-              ),
-            ],
-          ),
+                TextButton(
+                  onPressed: () => context.push('/register'),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(44, 38),
+                    foregroundColor: AppColors.primary,
+                  ),
+                  child: const Text('立即注册', style: TextStyle(fontSize: 13)),
+                ),
+              ],
+            ),
+          ],
           if (config.loginChannels.isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(
