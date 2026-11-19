@@ -120,6 +120,7 @@ class PeerConnectionManager {
       if (event.track.kind == 'video') {
         if (event.streams.isNotEmpty) {
           _renderer?.srcObject = event.streams.first;
+          _videoAttached = true;
         } else {
           // 部分服务端（如 webrtc-rs）answer 里不带 msid，event.streams 为空，
           // 此时必须自己建一个 MediaStream 挂载轨道，否则永远黑屏。
@@ -161,6 +162,7 @@ class PeerConnectionManager {
       _remoteStream = stream;
       await stream.addTrack(track);
       _renderer?.srcObject = stream;
+      _videoAttached = true;
       _log('远端视频轨已挂载到独立 MediaStream');
     } catch (error) {
       _log('挂载远端视频轨失败: $error');
@@ -297,6 +299,18 @@ class PeerConnectionManager {
   int _lastFramesDecoded = 0;
   int _framesDecodedTotal = 0;
   DateTime? _lastFramesAt;
+  int inboundVideoPackets = 0;
+  int inboundVideoBytes = 0;
+  int inboundFramesDecoded = 0;
+  int outboundVideoPackets = 0;
+  bool _videoAttached = false;
+
+  Map<String, String> get videoDiagnostics => {
+        'renderer': '${_renderer?.value.width ?? 0}x${_renderer?.value.height ?? 0}',
+        'srcObject': _videoAttached ? '已挂载' : '未挂载',
+        'videoIn': 'packets=$inboundVideoPackets bytes=$inboundVideoBytes frames=$inboundFramesDecoded',
+        'videoOut': 'packets=$outboundVideoPackets',
+      };
 
   Future<void> pollStats() async {
     if (_disposed) return;
@@ -346,6 +360,9 @@ class PeerConnectionManager {
             // 否则界面永远显示"--"，也无法判断到底有没有收到画面。
             final decoded = asInt(values['framesDecoded'] ?? values['framesReceived']);
             if (decoded > 0) _framesDecodedTotal = decoded;
+            inboundVideoPackets = packetsReceived;
+            inboundVideoBytes = asInt(values['bytesReceived'], fallback: inboundVideoBytes);
+            inboundFramesDecoded = _framesDecodedTotal;
           }
           final incoming = asInt(values['bytesReceived']);
           if (incoming > 0) bytesReceived = incoming;
@@ -353,6 +370,9 @@ class PeerConnectionManager {
         if (report.type == 'outbound-rtp') {
           final outgoing = asInt(values['bytesSent']);
           if (outgoing > 0) bytesSent = outgoing;
+          if (asString(values['kind']) == 'video') {
+            outboundVideoPackets = asInt(values['packetsSent']);
+          }
         }
         if (report.type == 'transport' && values['selectedCandidatePairId'] != null) {
           final dtls = asString(values['dtlsState']);
