@@ -65,37 +65,6 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
           ),
-          const SettingsSectionTitle('显示与操控'),
-          SettingsGroup(
-            padding: EdgeInsets.zero,
-            children: [
-              SettingsTile(
-                title: '画质与显示',
-                subtitle: '${_qualityLabel(settings.qualityPreset)} · ${settings.fpsLimit}FPS',
-                leading: const IconBadge(icon: Icons.tune_rounded),
-                onTap: () => context.push('/settings/display'),
-              ),
-              SettingsTile(
-                title: '音频',
-                subtitle: settings.audioEnabled ? '远程声音已开启' : '远程声音已关闭',
-                leading: const IconBadge(icon: Icons.volume_up_outlined),
-                onTap: () => context.push('/settings/audio'),
-              ),
-              SettingsTile(
-                title: '触控与按键',
-                subtitle: '灵敏度、触控板模式、快捷键收藏、游戏按键',
-                leading: const IconBadge(icon: Icons.touch_app_outlined),
-                onTap: () => context.push('/settings/touch'),
-              ),
-              SettingsTile(
-                title: '游戏手柄与虚拟按键',
-                subtitle: '布局导入导出、陀螺仪与扳机键',
-                leading: const IconBadge(icon: Icons.sports_esports_outlined),
-                onTap: () => context.push('/settings/gamepad'),
-                showDivider: false,
-              ),
-            ],
-          ),
           const SettingsSectionTitle('连接与提醒'),
           SettingsGroup(
             padding: EdgeInsets.zero,
@@ -107,12 +76,6 @@ class SettingsPage extends StatelessWidget {
                 onTap: () => context.push('/settings/connection'),
               ),
               SettingsTile(
-                title: '网络诊断',
-                subtitle: 'NAT 类型、信令延迟、TURN 可用性',
-                leading: const IconBadge(icon: Icons.monitor_heart_outlined),
-                onTap: () => context.push('/settings/diagnostics'),
-              ),
-              SettingsTile(
                 title: '通知与后台',
                 subtitle: settings.notificationEnabled ? '已开启通知与后台保活' : '通知已关闭',
                 leading: const IconBadge(icon: Icons.notifications_active_outlined),
@@ -121,22 +84,10 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
-          const SettingsSectionTitle('自动化与文件'),
+          const SettingsSectionTitle('文件与存储'),
           SettingsGroup(
             padding: EdgeInsets.zero,
             children: [
-              SettingsTile(
-                title: '定时任务',
-                subtitle: '按设定时间自动发起连接',
-                leading: const IconBadge(icon: Icons.schedule_rounded),
-                onTap: () => context.push('/settings/scheduled-tasks'),
-              ),
-              SettingsTile(
-                title: '离线指令',
-                subtitle: '设备上线后自动执行预设指令',
-                leading: const IconBadge(icon: Icons.terminal_rounded),
-                onTap: () => context.push('/settings/offline-commands'),
-              ),
               SettingsTile(
                 title: '文件与下载',
                 subtitle: '下载目录、传输记录与缓存清理',
@@ -226,12 +177,6 @@ class SettingsPage extends StatelessWidget {
     if (email.isNotEmpty) return email;
     final username = auth.user?.username ?? '';
     return username.isNotEmpty ? username : auth.displayName;
-  }
-
-  String _qualityLabel(String preset) {
-    final index = AppConstants.qualityPresetValues.indexOf(preset);
-    if (index < 0) return '高清';
-    return AppConstants.qualityPresets[index];
   }
 
   String _languageLabel(String lang) {
