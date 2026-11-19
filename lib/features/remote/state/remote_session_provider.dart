@@ -131,6 +131,21 @@ class RemoteSessionProvider extends ChangeNotifier {
 
   PeerConnectionManager? get peer => _peer;
 
+  /// 画面诊断：用于现场判断"没收到/没解码/没渲染"。
+  Map<String, String> get videoDiagnostics {
+    final info = <String, String>{
+      'stage': stage.name,
+      'renderer': '${renderer?.value.width ?? 0}x${renderer?.value.height ?? 0}',
+      'fps': '${transport.fps}',
+      'bitrate': '${transport.bitrateKbps} kbps',
+      'rtt': '${transport.rttMs} ms',
+      'loss': '${(transport.lossRate * 100).toStringAsFixed(1)}%',
+    };
+    final diagnostics = _peer?.videoDiagnostics;
+    if (diagnostics != null) info.addAll(diagnostics);
+    return info;
+  }
+
   Future<void> start() async {
     if (_starting) return;
     _starting = true;
