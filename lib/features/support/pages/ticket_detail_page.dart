@@ -48,35 +48,79 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     }
   }
 
+  bool _isImageAttachment(TicketAttachment attachment) {
+    if (attachment.mime.toLowerCase().startsWith('image/')) return true;
+    final name = attachment.fileName.toLowerCase();
+    return const ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.heic']
+        .any(name.endsWith);
+  }
+
+  String _attachmentUrl(TicketAttachment attachment) {
+    final path = attachment.filePath.trim();
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return context.read<AppServices>().api.resolveUri(path).toString();
+  }
+
+  Future<void> _copyAttachmentLink(String url) async {
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('附件链接已复制')),
+    );
+  }
+
   Future<void> _openAttachment(TicketAttachment attachment) async {
-    final path = attachment.filePath;
-    if (path.isEmpty) {
+    if (attachment.filePath.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('附件地址缺失，无法查看')),
+      );
+      return;
+    }
+    final url = _attachmentUrl(attachment);
+    if (_isImageAttachment(attachment)) {
+      await showDialog<void>(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (dialogContext) => _AttachmentImageViewer(
+          fileName: attachment.fileName,
+          url: url,
+          onCopy: () {
+            Navigator.of(dialogContext).pop();
+            _copyAttachmentLink(url);
+          },
+          onClose: () => Navigator.of(dialogContext).pop(),
+        ),
       );
       return;
     }
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(attachment.fileName),
-        content: SelectableText(path),
+        title: Text(attachment.fileName.isEmpty ? '附件' : attachment.fileName),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SelectableText(url),
+            const SizedBox(height: 10),
+            Text(
+              '大小 ${Formatters.bytes(attachment.size)}'
+              '${attachment.mime.isEmpty ? '' : ' · ${attachment.mime}'}',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('关闭'),
           ),
           FilledButton(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: path));
-              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('附件地址已复制')),
-                );
-              }
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _copyAttachmentLink(url);
             },
-            child: const Text('复制地址'),
+            child: const Text('复制链接'),
           ),
         ],
       ),
@@ -284,6 +328,127 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _AttachmentImageViewer extends StatelessWidget {
+  const _AttachmentImageViewer({
+    required this.fileName,
+    required this.url,
+    required this.onCopy,
+    required this.onClose,
+  });
+
+  final String fileName;
+  final String url;
+  final VoidCallback onCopy;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(12),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: size.width,
+        height: size.height * 0.82,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      fileName.isEmpty ? '附件预览' : fileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close_rounded, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Center(
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stack) => const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white54,
+                            size: 40,
+                          ),
+                          SizedBox(height: 10),
+                          Text(
+                            '图片加载失败，可复制链接后用浏览器查看',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white54, fontSize: 10),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: onCopy,
+                    icon: const Icon(Icons.link_rounded, size: 16, color: Colors.white),
+                    label: const Text(
+                      '复制链接',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
