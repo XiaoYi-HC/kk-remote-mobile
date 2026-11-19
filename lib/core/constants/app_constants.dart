@@ -4,7 +4,7 @@ class AppConstants {
 
   static const String productName = 'KK远程';
   static const String applicationId = 'com.kk.remote';
-  static const String appVersion = '1.1.18';
+  static const String appVersion = '1.1.19';
   static const String officialSite = 'https://shop1.new.tg';
   static const String defaultApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
