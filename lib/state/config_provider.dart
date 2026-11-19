@@ -42,7 +42,8 @@ class ConfigProvider extends ChangeNotifier {
   String? get error => _error;
 
   bool get allowGuest => _config.allowGuest;
-  List<ThirdPartyChannel> get loginChannels => _config.thirdPartyChannels;
+  List<ThirdPartyChannel> get loginChannels =>
+      _config.loginEnabled('third_party') ? _config.thirdPartyChannels : const [];
   List<ThirdPartyChannel> get registerChannels => _config.appleChannels;
   bool get appleRegisterEnabled => _config.registerEnabled('apple') && _config.appleChannels.isNotEmpty;
 
