@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -79,6 +80,26 @@ class _AboutPageState extends State<AboutPage> {
     await context.push('/settings/protocol/$type');
   }
 
+  Future<void> _copyOfficialSite() async {
+    await Clipboard.setData(const ClipboardData(text: AppConstants.officialSite));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('官网地址已复制')),
+    );
+  }
+
+  Future<void> _openOfficialSite() async {
+    final ok = await launchUrl(
+      Uri.parse(AppConstants.officialSite),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开浏览器，请复制官网地址后手动访问')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MobilePage(
@@ -110,6 +131,17 @@ class _AboutPageState extends State<AboutPage> {
                       )
                     : null,
                 onTap: _checking ? null : _checkUpdate,
+              ),
+              SettingsTile(
+                title: '官方网站',
+                subtitle: AppConstants.officialSite,
+                leading: const IconBadge(icon: Icons.public_rounded),
+                trailing: IconButton(
+                  tooltip: '复制官网地址',
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  onPressed: _copyOfficialSite,
+                ),
+                onTap: _openOfficialSite,
               ),
               SettingsTile(
                 title: '用户协议',
