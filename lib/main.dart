@@ -19,6 +19,10 @@ Future<void> main() async {
 
   final store = await LocalStore.create();
   final settings = SettingsProvider(store);
+  // 当前版本应用内文案仅提供简体中文，统一回落，避免历史上选择过其他语言的用户看到“切换无效”。
+  if (settings.language != 'zh-CN') {
+    await settings.setString(SettingsKeys.language, 'zh-CN');
+  }
   // 应用持久化的屏幕方向锁，避免重启后设置失效。
   switch (settings.orientationLock) {
     case 'portrait':
