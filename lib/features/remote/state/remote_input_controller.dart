@@ -73,7 +73,7 @@ class RemoteInputController {
 
 /// 实体键盘逻辑键到 W3C DOM code 的映射，供被控端解析。
 String? domCodeFor(LogicalKeyboardKey key) {
-  const fixed = <LogicalKeyboardKey, String>{
+  final fixed = <LogicalKeyboardKey, String>{
     LogicalKeyboardKey.controlLeft: 'ControlLeft',
     LogicalKeyboardKey.controlRight: 'ControlRight',
     LogicalKeyboardKey.shiftLeft: 'ShiftLeft',
