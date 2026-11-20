@@ -100,8 +100,11 @@ class _TwoFactorPageState extends State<TwoFactorPage> {
         );
       },
     );
+    // 等弹窗退出动画结束后再释放控制器，避免 TextField 继续访问已释放对象。
+    await Future<void>.delayed(const Duration(milliseconds: 260));
     controller.dispose();
     if (code == null || code.isEmpty) return;
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       await context.read<AppServices>().accountApi.disable2fa(code);

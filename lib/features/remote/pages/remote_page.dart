@@ -30,6 +30,7 @@ import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/app_sheet.dart';
 import '../../../widgets/settings_widgets.dart';
 import '../state/remote_args.dart';
+import '../state/remote_input_controller.dart';
 import '../state/remote_session_provider.dart';
 import '../widgets/connect_loading.dart';
 import '../widgets/gamepad_panel.dart';
@@ -54,6 +55,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   static const _layoutKey = 'gamepad_layout_current';
 
   late final RemoteSessionProvider _session;
+  late final RemoteInputController _input;
   final GlobalKey _captureKey = GlobalKey();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -66,11 +68,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   bool _showingTransport = false;
   bool _noVideoCheckScheduled = false;
   bool _wasBackground = false;
-  String? _lastClipboard;
+  bool _imeFocused = false;
+  bool _pipSupported = false;
+  bool _recordingSupported = false;
+  bool _castSupported = false;
   VirtualKeyLayout _layout = VirtualKeyLayout.defaultShooter();
   Offset _virtualCursor = const Offset(0.5, 0.5);
 
   Timer? _recordingTimer;
+  Timer? _resumeWatchdog;
   Duration _recordingDuration = Duration.zero;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   String _networkLabel = '当前网络';
@@ -90,8 +96,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
     RemoteSessionRegistry.instance.current = _session;
     _session.addListener(_onSessionChanged);
+    _input = RemoteInputController(_session);
+    HardwareKeyboard.instance.addHandler(_onHardwareKey);
     _orientationLocked = settings.orientationLock != 'auto';
     _loadLayout();
+    // 原生能力门控：未接入的能力不展示入口，避免用户点进死路。
+    Future.wait([
+      services.native.isSupported('pip'),
+      services.native.isSupported('recording'),
+      services.native.isSupported('cast'),
+    ]).then((values) {
+      if (!mounted) return;
+      setState(() {
+        _pipSupported = values[0];
+        _recordingSupported = values[1];
+        _castSupported = values[2];
+      });
+    });
     _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
       if (!mounted) return;
       setState(() => _networkLabel = _networkLabelFor(results));
@@ -114,7 +135,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyboard.instance.removeHandler(_onHardwareKey);
+    _input.releaseAll();
     _recordingTimer?.cancel();
+    _resumeWatchdog?.cancel();
     _connectivitySub?.cancel();
     _session.removeListener(_onSessionChanged);
     if (RemoteSessionRegistry.instance.current == _session) {
@@ -152,8 +176,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           }
         });
       }
-    } else if (_session.stage == RemoteStage.failed && !_loadingVisible) {
-      setState(() => _loadingVisible = true);
+    } else if (!_session.connected) {
+      _noVideoCheckScheduled = false;
+      if (_session.stage == RemoteStage.failed && !_loadingVisible) {
+        setState(() => _loadingVisible = true);
+      }
     }
     setState(() {});
   }
@@ -202,10 +229,29 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// 实体键盘/蓝牙键盘事件桥接；输入法获得焦点时不拦截，交给系统组词。
+  bool _onHardwareKey(KeyEvent event) {
+    if (!mounted || !_keyboardVisible || _imeFocused) return false;
+    // 有弹窗/底部面板打开时，键盘事件交给弹窗处理。
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) return false;
+    final code = domCodeFor(event.logicalKey);
+    if (code == null) return false;
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      _input.keyDown(code);
+    } else if (event is KeyUpEvent) {
+      _input.keyUp(code);
+    }
+    return true;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused) {
       _wasBackground = true;
+      // 切后台前抬起所有按键，避免被控端 Ctrl/W 等按键卡住。
+      _session.releaseAllKeys();
+      _resumeWatchdog?.cancel();
       return;
     }
     if (state == AppLifecycleState.resumed && _wasBackground) {
@@ -216,16 +262,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         _session.manualReconnect();
         _showMessage('已回到前台，正在恢复远程会话');
       }
-      if (settings.clipboardSync && _session.connected) {
-        Clipboard.getData(Clipboard.kTextPlain).then((data) {
-          final text = data?.text;
-          if (text != null && text.isNotEmpty && text != _lastClipboard) {
-            _lastClipboard = text;
-            _session.onLocalClipboardChanged(text);
-          }
-        });
-      }
+      // 不再主动读取系统剪贴板：iOS 16+ 会因此反复弹出“允许粘贴”授权。
+      _scheduleResumeHealthCheck();
     }
+  }
+
+  /// 回前台后检查媒体是否恢复；仍无画面/无统计时自动重连。
+  void _scheduleResumeHealthCheck() {
+    _resumeWatchdog?.cancel();
+    _resumeWatchdog = Timer(const Duration(seconds: 3), () {
+      if (!mounted || !_session.connected) return;
+      final noFrame = (_session.renderer?.value.width ?? 0) == 0;
+      if (noFrame || _session.mediaStale) {
+        _showMessage('画面未恢复，正在重新建立会话');
+        setState(() => _loadingVisible = true);
+        _session.manualReconnect();
+      }
+    });
   }
 
   Future<void> _requestLeave() async {
@@ -246,6 +299,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Future<void> _leave() async {
     if (_leaving) return;
     _leaving = true;
+    _input.releaseAll();
     if (_session.recording) {
       await _session.stopRecording();
     }
@@ -269,7 +323,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           'KK远程截图_${DateTime.now().millisecondsSinceEpoch}.png',
         ));
         await file.writeAsBytes(byteData.buffer.asUint8List());
-        _showMessage('截图已保存：${file.path}');
+        // 优先写入系统相册；失败时保留沙盒文件路径，至少不丢失截图。
+        final savedToGallery =
+            await context.read<AppServices>().native.saveImageToGallery(file.path);
+        if (!mounted) return;
+        _showMessage(savedToGallery ? '截图已保存到相册' : '截图已保存：${file.path}');
       } finally {
         image.dispose();
       }
@@ -438,7 +496,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               children: [
                 SettingsSwitchTile(
                   title: '开启剪贴板同步',
-                  subtitle: '手机会话期间复制的文字自动同步到电脑',
+                  subtitle: '开启后可手动粘贴手机剪贴板到电脑',
                   value: settings.clipboardSync,
                   onChanged: (value) async {
                     await settings.setBool(SettingsKeys.clipboardSync, value);
@@ -566,6 +624,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleKeyboard() async {
+    // 切换面板时先抬起按键，避免被控端残留 Ctrl/Shift。
+    _input.releaseAll();
     setState(() {
       _keyboardVisible = !_keyboardVisible;
       if (_keyboardVisible) _gamepadVisible = false;
@@ -573,6 +633,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleGamepad() async {
+    _input.releaseAll();
     setState(() {
       _gamepadVisible = !_gamepadVisible;
       if (_gamepadVisible) _keyboardVisible = false;
@@ -827,7 +888,23 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           return PopScope(
             canPop: false,
             onPopInvokedWithResult: (didPop, result) {
-              if (!didPop && !_leaving) _requestLeave();
+              if (didPop) return;
+              // 返回键分级：先收输入法，再收键盘/手柄，最后才询问断开。
+              if (_imeFocused) {
+                FocusManager.instance.primaryFocus?.unfocus();
+                return;
+              }
+              if (_keyboardVisible) {
+                _input.releaseAll();
+                setState(() => _keyboardVisible = false);
+                return;
+              }
+              if (_gamepadVisible) {
+                _input.releaseAll();
+                setState(() => _gamepadVisible = false);
+                return;
+              }
+              if (!_leaving) _requestLeave();
             },
             child: Scaffold(
               key: _scaffoldKey,
@@ -914,7 +991,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                             editing: _gamepadEditing,
                             onEditingChanged: (value) => setState(() => _gamepadEditing = value),
                             onLayoutChanged: (layout) => setState(() => _layout = layout),
-                            onKey: (code, down) => session.key(code, down),
+                            onKey: (code, down) =>
+                                down ? _input.keyDown(code) : _input.keyUp(code),
                             onMouse: (button, down) {
                               if (down) {
                                 session.mouseDown(_virtualCursor.dx, _virtualCursor.dy, button: button);
@@ -931,7 +1009,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                             onExport: _exportLayout,
                             onShowQr: _showLayoutQr,
                             onRestoreDefault: _restoreDefaultLayout,
-                            onClose: () => setState(() => _gamepadVisible = false),
+                            onClose: () {
+                              _input.releaseAll();
+                              setState(() => _gamepadVisible = false);
+                            },
                             hapticsEnabled: settings.hapticsEnabled,
                           ),
                         ),
@@ -1047,50 +1128,76 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       ),
                     ),
                   ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (_keyboardVisible)
-                          VirtualKeyboard(
-                            favoriteCodes: settings.hotkeyFavorites,
-                            hapticsEnabled: settings.hapticsEnabled,
-                            onKey: (code, down, modifiers) =>
-                                session.key(code, down, modifiers: modifiers),
-                            onClose: () => setState(() => _keyboardVisible = false),
-                            onChineseInput: _openChineseInput,
-                            onToggleFavorite: _toggleFavorite,
+                  AnimatedPadding(
+                    duration: const Duration(milliseconds: 160),
+                    curve: Curves.easeOut,
+                    // resizeToAvoidBottomInset=false，这里显式避让输入法。
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.viewInsetsOf(context).bottom,
+                    ),
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_keyboardVisible)
+                            ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxHeight: _keyboardMaxHeight(context),
+                              ),
+                              child: SingleChildScrollView(
+                                child: VirtualKeyboard(
+                                  favoriteCodes: settings.hotkeyFavorites,
+                                  hapticsEnabled: settings.hapticsEnabled,
+                                  onKeyDown: (code, repeatable) =>
+                                      _input.keyDown(code, repeatable: repeatable),
+                                  onKeyUp: _input.keyUp,
+                                  onText: (text) => session.sendText(text),
+                                  onLongText: _openChineseInput,
+                                  onCombo: _session.keyCombo,
+                                  onSystemAction: _session.requestSystemAction,
+                                  onImeFocusChanged: (focused) => _imeFocused = focused,
+                                  onClose: () {
+                                    _input.releaseAll();
+                                    setState(() => _keyboardVisible = false);
+                                  },
+                                  onToggleFavorite: _toggleFavorite,
+                                ),
+                              ),
+                            ),
+                          RemoteToolbar(
+                            keyboardVisible: _keyboardVisible,
+                            gamepadVisible: _gamepadVisible,
+                            viewOnly: session.viewOnly,
+                            antiTouch: session.antiTouch,
+                            recording: session.recording,
+                            pipActive: session.pipActive,
+                            castingActive: session.castingActive,
+                            privacyEnabled: session.privacyBlackScreen,
+                            orientationLocked: _orientationLocked,
+                            onDisconnect: _requestLeave,
+                            onKeyboard: _toggleKeyboard,
+                            onGamepad: _toggleGamepad,
+                            onFiles: _openFiles,
+                            onSystemActions: _openSystemActions,
+                            onDisplaySwitch: _openDisplaySwitch,
+                            onToggleViewOnly: _toggleViewOnly,
+                            onToggleAntiTouch: _toggleAntiTouch,
+                            onScreenshot: _takeScreenshot,
+                            onRecording: _toggleRecording,
+                            showRecording: _recordingSupported,
+                            onPip: _openPip,
+                            showPip: _pipSupported,
+                            onCast: _toggleCast,
+                            showCast: _castSupported,
+                            onQuality: _openQuality,
+                            onCamera: _openCamera,
+                            onPrivacy: _togglePrivacy,
+                            onOrientationLock: _toggleOrientation,
+                            onClipboard: _openClipboard,
                           ),
-                        RemoteToolbar(
-                      keyboardVisible: _keyboardVisible,
-                      gamepadVisible: _gamepadVisible,
-                      viewOnly: session.viewOnly,
-                      antiTouch: session.antiTouch,
-                      recording: session.recording,
-                      pipActive: session.pipActive,
-                      castingActive: session.castingActive,
-                      privacyEnabled: session.privacyBlackScreen,
-                      orientationLocked: _orientationLocked,
-                      onDisconnect: _requestLeave,
-                      onKeyboard: _toggleKeyboard,
-                      onGamepad: _toggleGamepad,
-                      onFiles: _openFiles,
-                      onSystemActions: _openSystemActions,
-                      onDisplaySwitch: _openDisplaySwitch,
-                      onToggleViewOnly: _toggleViewOnly,
-                      onToggleAntiTouch: _toggleAntiTouch,
-                      onScreenshot: _takeScreenshot,
-                      onRecording: _toggleRecording,
-                      onPip: _openPip,
-                      onCast: _toggleCast,
-                      onQuality: _openQuality,
-                      onCamera: _openCamera,
-                      onPrivacy: _togglePrivacy,
-                      onOrientationLock: _toggleOrientation,
-                      onClipboard: _openClipboard,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   Positioned.fill(
@@ -1135,6 +1242,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  double _keyboardMaxHeight(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final available = (media.size.height - media.viewInsets.bottom - 110)
+        .clamp(160.0, media.size.height)
+        .toDouble();
+    final factor = media.orientation == Orientation.landscape ? 0.7 : 0.6;
+    return available * factor;
   }
 
   String _networkLabelFor(List<ConnectivityResult> results) {

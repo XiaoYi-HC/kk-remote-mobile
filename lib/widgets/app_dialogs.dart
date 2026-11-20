@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/platform/deep_link_service.dart';
 import '../core/theme/app_colors.dart';
 
 Future<bool> showConfirmDialog(
@@ -93,4 +94,56 @@ Future<String?> showTextInputDialog(
       ],
     ),
   );
+}
+
+/// 等待第三方授权通过 kkremote://oauth/callback 回跳 App。
+Future<OAuthCallback?> waitForOAuthCallback(
+  BuildContext context,
+  String providerName,
+) {
+  return showDialog<OAuthCallback>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _OAuthWaitingDialog(providerName: providerName),
+  );
+}
+
+class _OAuthWaitingDialog extends StatefulWidget {
+  const _OAuthWaitingDialog({required this.providerName});
+
+  final String providerName;
+
+  @override
+  State<_OAuthWaitingDialog> createState() => _OAuthWaitingDialogState();
+}
+
+class _OAuthWaitingDialogState extends State<_OAuthWaitingDialog> {
+  @override
+  void initState() {
+    super.initState();
+    DeepLinkService.instance.waitForOAuth().then((callback) {
+      if (!mounted) return;
+      Navigator.of(context).pop(callback);
+    });
+  }
+
+  @override
+  void dispose() {
+    DeepLinkService.instance.cancelOAuth();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('${widget.providerName}授权'),
+      content: const Text('请在浏览器中完成授权，完成后会自动返回 KK远程。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+      ],
+    );
+  }
 }

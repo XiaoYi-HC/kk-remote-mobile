@@ -70,7 +70,9 @@ Future<void> main() async {
     // 通知初始化失败不应阻塞 App 启动。
   }
   NotificationService.instance.onNotificationTap = (payload) {
-    if (payload['type'] == 'incoming_call' && settings.incomingCallPush) {
+    if (payload['type'] == 'incoming_call' &&
+        settings.incomingCallPush &&
+        settings.notificationEnabled) {
       devices.showIncomingCall(
         Device(
           name: payload['deviceName']?.toString() ?? '',

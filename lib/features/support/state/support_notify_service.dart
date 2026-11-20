@@ -4,6 +4,7 @@ import '../../../core/platform/notification_service.dart';
 import '../../../data/models/support.dart';
 import '../../../data/ws/support_socket.dart';
 import '../../../state/app_services.dart';
+import '../../../state/settings_provider.dart';
 
 /// 全局客服通道：登录后常驻，客服回复或工单回复时发送本地通知。
 ///
@@ -22,7 +23,7 @@ class SupportNotifyService {
   String _wsUrl = '';
   bool _running = false;
   bool _starting = false;
-  bool _notificationsEnabled = true;
+  SettingsProvider? _settings;
 
   /// 进入某个会话时暂停该会话的通知，避免正在聊天还弹提醒。
   void enterConversation(int conversationId) => _viewingConversationId = conversationId;
@@ -48,8 +49,8 @@ class SupportNotifyService {
       _accountId = accountId;
       _token = token;
       _wsUrl = services.supportSocketUrl;
-      // 用户关闭通知开关后不再弹客服/工单提醒。
-      _notificationsEnabled = services.settings.notificationEnabled;
+      // 开关状态实时读取，避免启动后再切换设置不生效。
+      _settings = services.settings;
       _running = true;
       await _connect();
     } finally {
@@ -114,7 +115,7 @@ class SupportNotifyService {
     required String body,
     required Map<String, dynamic> payload,
   }) {
-    if (!_notificationsEnabled) return;
+    if (!(_settings?.notificationEnabled ?? true)) return;
     NotificationService.instance.showMessage(
       title: title,
       body: body,

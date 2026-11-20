@@ -18,6 +18,15 @@ class AppLockService {
     }
   }
 
+  /// 设备是否具备可用的锁屏密码或生物识别能力。
+  Future<bool> isDeviceSupported() async {
+    try {
+      return await _auth.isDeviceSupported();
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> authenticate({String reason = '验证身份以解锁 KK远程'}) async {
     try {
       return await _auth.authenticate(

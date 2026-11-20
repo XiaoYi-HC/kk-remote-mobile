@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+import 'native_bridge.dart';
 
 /// 本地通知：连接请求（来电式）、站内消息与离线告警。
 class NotificationService {
@@ -12,6 +15,7 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  bool _fullScreenChecked = false;
 
   void Function(Map<String, dynamic> payload)? onIncomingCallAction;
   void Function(Map<String, dynamic> payload)? onNotificationTap;
@@ -72,12 +76,28 @@ class NotificationService {
     return iosGranted ?? status.isGranted;
   }
 
+  Future<void> _ensureFullScreenPermission() async {
+    if (!Platform.isAndroid || _fullScreenChecked) return;
+    _fullScreenChecked = true;
+    try {
+      final allowed = await NativeBridge.instance.canUseFullScreenIntent();
+      if (allowed) return;
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestFullScreenIntentPermission();
+    } catch (error) {
+      debugPrint('full screen intent permission failed: $error');
+    }
+  }
+
   Future<void> showIncomingCall({
     required String deviceName,
     required String deviceCode,
     String? source,
   }) async {
     await init();
+    // Android 14 起全屏通知需要单独授权，未授权时降级为高优先级横幅。
+    await _ensureFullScreenPermission();
     final payload = jsonEncode({
       'type': 'incoming_call',
       'deviceCode': deviceCode,

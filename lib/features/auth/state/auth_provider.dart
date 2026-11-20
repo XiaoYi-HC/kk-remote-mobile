@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_client.dart';
@@ -318,12 +320,17 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> logout({bool callApi = true}) async {
     _sessionGeneration++;
-    if (callApi && _accessToken.isNotEmpty) {
-      try {
-        await _authApi.logout(refreshToken: _refreshToken);
-      } catch (_) {
-        // 忽略退出接口异常，本地会话必须清除。
-      }
+    final accessToken = _accessToken;
+    final refreshToken = _refreshToken;
+    // 先用当前 token 发起注销，再立即清理本地会话；失败不影响退出。
+    if (callApi && accessToken.isNotEmpty) {
+      unawaited(() async {
+        try {
+          await _authApi
+              .logout(refreshToken: refreshToken)
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {}
+      }());
     }
     _accessToken = '';
     _refreshToken = '';

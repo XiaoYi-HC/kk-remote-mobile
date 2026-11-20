@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants/app_constants.dart';
 import 'core/platform/app_lock_service.dart';
+import 'core/platform/deep_link_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/state/auth_provider.dart';
@@ -24,6 +28,13 @@ class KKRemoteApp extends StatefulWidget {
 
 class _KKRemoteAppState extends State<KKRemoteApp> {
   late final GoRouter _router = buildRouter(widget.auth);
+
+  @override
+  void initState() {
+    super.initState();
+    DeepLinkService.instance.attachRouter(_router);
+    unawaited(DeepLinkService.instance.init());
+  }
 
   Locale _localeFor(String lang) {
     final parts = lang.split('-');
@@ -58,9 +69,7 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
             final media = MediaQuery.of(context);
             return MediaQuery(
               data: media.copyWith(
-                textScaler: TextScaler.linear(
-                  settings.effectiveTextScale.clamp(0.9, 1.25),
-                ),
+                textScaler: TextScaler.linear(settings.effectiveTextScale),
               ),
               child: AppLockGate(
                 settings: settings,
@@ -88,6 +97,7 @@ class AppLockGate extends StatefulWidget {
 class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   bool _locked = false;
   bool _authenticating = false;
+  bool _unsupported = false;
   DateTime? _pausedAt;
   String? _message;
 
@@ -139,7 +149,22 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   Future<void> _unlock() async {
     if (_authenticating) return;
     _authenticating = true;
-    if (mounted) setState(() => _message = null);
+    if (mounted) {
+      setState(() {
+        _message = null;
+        _unsupported = false;
+      });
+    }
+    final supported = await AppLockService.instance.isDeviceSupported();
+    if (!supported) {
+      _authenticating = false;
+      if (!mounted) return;
+      setState(() {
+        _unsupported = true;
+        _message = '当前设备未设置锁屏密码或生物识别，无法使用应用锁';
+      });
+      return;
+    }
     final ok = await AppLockService.instance.authenticate();
     _authenticating = false;
     if (!mounted) return;
@@ -148,10 +173,23 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
       setState(() {
         _locked = false;
         _message = null;
+        _unsupported = false;
       });
     } else {
-      setState(() => _message = '验证未通过，请重试');
+      setState(() => _message = '验证未通过，请重试或使用系统密码');
     }
+  }
+
+  /// 设备不支持验证时提供安全兜底：关闭应用锁并继续，避免用户被永久锁死。
+  Future<void> _disableAppLockAndUnlock() async {
+    await widget.settings.setBool(SettingsKeys.appLockEnabled, false);
+    widget.settings.unlockedThisSession = true;
+    if (!mounted) return;
+    setState(() {
+      _locked = false;
+      _unsupported = false;
+      _message = null;
+    });
   }
 
   @override
@@ -206,7 +244,20 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
                             const SizedBox(height: 12),
                             Text(
                               _message!,
+                              textAlign: TextAlign.center,
                               style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                            ),
+                          ],
+                          if (_unsupported) ...[
+                            const SizedBox(height: 16),
+                            OutlinedButton(
+                              onPressed: () => openAppSettings(),
+                              child: const Text('去系统设置'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _disableAppLockAndUnlock,
+                              child: const Text('关闭应用锁并继续'),
                             ),
                           ],
                           const SizedBox(height: 20),

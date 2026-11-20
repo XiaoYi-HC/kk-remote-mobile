@@ -307,7 +307,8 @@ class _ConnectLoadingState extends State<ConnectLoading> with TickerProviderStat
       case 'network_unreachable':
         return '网络不可达';
       case 'device_offline':
-        return '设备离线';
+      case 'peer_offline':
+        return '对方设备离线';
       case 'auth_failed':
         return '凭证错误';
       case 'version_incompatible':
@@ -315,10 +316,12 @@ class _ConnectLoadingState extends State<ConnectLoading> with TickerProviderStat
       case 'peer_closed':
       case 'closed':
         return '对方已结束会话';
+      case 'session_expired':
+        return '会话已过期';
       case 'internal_error':
         return '连接失败';
       default:
-        return '内部错误';
+        return '连接已中断';
     }
   }
 }

@@ -23,6 +23,49 @@ class NativeBridge {
     }
   }
 
+  /// 注册深链回调；native 收到 kkremote:// 链接时通过 onDeepLink 推送到 Dart。
+  void setDeepLinkHandler(void Function(String link) handler) {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onDeepLink') {
+        final link = call.arguments?.toString();
+        if (link != null && link.isNotEmpty) handler(link);
+      }
+      return null;
+    });
+  }
+
+  /// 冷启动时携带的深链。
+  Future<String?> getInitialLink() async {
+    try {
+      return await _channel.invokeMethod<String>('getInitialLink');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Android 14+ 是否允许全屏通知（来电样式），其他平台恒为 true。
+  Future<bool> canUseFullScreenIntent() async {
+    try {
+      return await _channel.invokeMethod<bool>('canUseFullScreenIntent') ?? true;
+    } on MissingPluginException {
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 把本地图片保存到系统相册（Android 10+ / iOS 相册）。
+  Future<bool> saveImageToGallery(String path) async {
+    try {
+      return await _channel.invokeMethod<bool>('saveImageToGallery', {'path': path}) ?? false;
+    } on PlatformException catch (error) {
+      debugPrint('saveImageToGallery failed: ${error.message}');
+      return false;
+    } on MissingPluginException {
+      return false;
+    }
+  }
+
   Future<bool> enterPictureInPicture() async {
     try {
       return await _channel.invokeMethod<bool>('enterPictureInPicture') ?? false;

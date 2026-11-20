@@ -31,6 +31,9 @@ class RemoteToolbar extends StatefulWidget {
     required this.onPrivacy,
     required this.onOrientationLock,
     required this.onClipboard,
+    this.showRecording = true,
+    this.showPip = true,
+    this.showCast = true,
   });
 
   final bool keyboardVisible;
@@ -42,6 +45,9 @@ class RemoteToolbar extends StatefulWidget {
   final bool castingActive;
   final bool privacyEnabled;
   final bool orientationLocked;
+  final bool showRecording;
+  final bool showPip;
+  final bool showCast;
 
   final VoidCallback onDisconnect;
   final VoidCallback onKeyboard;
@@ -121,25 +127,28 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
         icon: Icons.photo_camera_outlined,
         onTap: widget.onScreenshot,
       ),
-      _ToolItem(
-        label: widget.recording ? '停止录制' : '录制',
-        icon: widget.recording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
-        active: widget.recording,
-        color: widget.recording ? AppColors.danger : null,
-        onTap: widget.onRecording,
-      ),
-      _ToolItem(
-        label: '悬浮小窗',
-        icon: Icons.picture_in_picture_alt_rounded,
-        active: widget.pipActive,
-        onTap: widget.onPip,
-      ),
-      _ToolItem(
-        label: '投屏',
-        icon: Icons.screen_share_rounded,
-        active: widget.castingActive,
-        onTap: widget.onCast,
-      ),
+      if (widget.showRecording)
+        _ToolItem(
+          label: widget.recording ? '停止录制' : '录制',
+          icon: widget.recording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
+          active: widget.recording,
+          color: widget.recording ? AppColors.danger : null,
+          onTap: widget.onRecording,
+        ),
+      if (widget.showPip)
+        _ToolItem(
+          label: '悬浮小窗',
+          icon: Icons.picture_in_picture_alt_rounded,
+          active: widget.pipActive,
+          onTap: widget.onPip,
+        ),
+      if (widget.showCast)
+        _ToolItem(
+          label: '投屏',
+          icon: Icons.screen_share_rounded,
+          active: widget.castingActive,
+          onTap: widget.onCast,
+        ),
       _ToolItem(
         label: '画质',
         icon: Icons.tune_rounded,

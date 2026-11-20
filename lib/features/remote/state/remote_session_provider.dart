@@ -53,6 +53,8 @@ class RemoteSessionProvider extends ChangeNotifier {
   Timer? _reconnectTimer;
   Timer? _uiTicker;
   int _reconnectAttempts = 0;
+  int _peerRetries = 0;
+  final Set<String> _heldKeys = <String>{};
   bool _starting = false;
   bool _closedByUser = false;
   bool _disposed = false;
@@ -120,6 +122,10 @@ class RemoteSessionProvider extends ChangeNotifier {
   bool get connected => stage.isConnected;
   bool get connecting => !connected && stage != RemoteStage.failed;
   bool get canForwardInput => connected && !viewOnly && !antiTouch;
+
+  /// 媒体统计超过 6 秒未更新，用于回前台后的画面健康检查。
+  bool get mediaStale =>
+      connected && DateTime.now().difference(_lastTrafficAt) > const Duration(seconds: 6);
   int get trafficBytes => _trafficBytes;
   String get activeDisplayLabel {
     if (displays.isEmpty) return '显示器';
@@ -295,6 +301,14 @@ class RemoteSessionProvider extends ChangeNotifier {
     sessionId = event.sessionId.isNotEmpty ? event.sessionId : sessionId;
     final nextStage = RemoteStage.parse(asString(event.data['stage']));
     final accepted = asBool(event.data['accepted']);
+    // 服务端在“等待对方确认”阶段会下发 accepted=false + stage=waiting_confirm，
+    // 这表示尚未确认，不是拒绝，不能直接判定失败。
+    if (!accepted && nextStage == RemoteStage.waitingConfirm) {
+      stage = RemoteStage.waitingConfirm;
+      connectionNotice = '等待对方确认';
+      notifyListeners();
+      return;
+    }
     if (!accepted) {
       final reason = asString(event.data['reason'], fallback: 'rejected');
       _fail(reason, RemoteFailure.fromReason(reason).message);
@@ -304,11 +318,10 @@ class RemoteSessionProvider extends ChangeNotifier {
       stage = nextStage;
       notifyListeners();
     }
-    if (accepted &&
-        (nextStage == RemoteStage.iceChecking ||
-            nextStage == RemoteStage.p2pConnected ||
-            nextStage == RemoteStage.relayConnected ||
-            settings.autoReconnect)) {
+    if (nextStage == RemoteStage.iceChecking ||
+        nextStage == RemoteStage.p2pConnected ||
+        nextStage == RemoteStage.relayConnected ||
+        settings.autoReconnect) {
       await _ensurePeer();
     }
   }
@@ -321,8 +334,10 @@ class RemoteSessionProvider extends ChangeNotifier {
         if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
           if (!stage.isConnected) {
             stage = RemoteStage.p2pConnected;
-            notifyListeners();
           }
+          _lastTrafficAt = DateTime.now();
+          _markConnected();
+          notifyListeners();
           requestDisplayList();
         } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
           _handlePeerFailed();
@@ -400,7 +415,16 @@ class RemoteSessionProvider extends ChangeNotifier {
           RemoteFailure.fromReason(failureReason).message);
       return;
     }
+    if (nextStage.isConnected) {
+      _markConnected();
+    }
     notifyListeners();
+  }
+
+  /// 连接成功后清零重连/重协商额度，避免额度跨会话累计。
+  void _markConnected() {
+    _reconnectAttempts = 0;
+    _peerRetries = 0;
   }
 
   void _onControlMessage(Map<String, dynamic> message) {
@@ -510,18 +534,46 @@ class RemoteSessionProvider extends ChangeNotifier {
   }
 
   void _handlePeerFailed() {
-    if (_closedByUser) return;
+    if (_closedByUser || stage == RemoteStage.failed) return;
+    // 网络切换/NAT 映射变化时先重新协商一次，避免直接判死。
+    if (_peerRetries < 2) {
+      _peerRetries++;
+      connectionNotice = '连接不稳定，正在重新协商（$_peerRetries/2）';
+      notifyListeners();
+      unawaited(_restartPeer());
+      return;
+    }
     final relay = settings.allowRelay ? '中继' : '中继（已关闭）';
     _fail('network_unreachable', '媒体连接失败，已尝试 P2P 与$relay，请检查网络后重试');
   }
 
+  Future<void> _restartPeer() async {
+    await _disposePeer();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (_closedByUser || stage == RemoteStage.failed) return;
+    try {
+      await _ensurePeer();
+    } catch (_) {
+      // 服务端不支持重复 offer 时，回退为完整重连。
+      await _reconnect();
+    }
+  }
+
   void _handleRemoteClosed(String reason) {
     if (_closedByUser) return;
+    // 已经进入失败态时保留更具体的失败原因，避免被“会话已结束”覆盖。
+    if (stage == RemoteStage.failed) return;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    releaseAllKeys();
     unawaited(_disposePeer());
-    final ended = reason.isEmpty || reason == 'peer_closed' || reason == 'closed';
+    final normalized = reason.trim();
+    final ended = normalized.isEmpty ||
+        normalized == 'peer_closed' ||
+        normalized == 'closed';
     failure = RemoteFailure(
-      reason.isEmpty ? 'peer_closed' : reason,
-      ended ? '对方已结束远程会话' : '会话已结束（$reason）',
+      normalized.isEmpty ? 'peer_closed' : normalized,
+      ended ? '对方已结束远程会话' : RemoteFailure.fromReason(normalized).message,
     );
     stage = RemoteStage.failed;
     _stopTicking();
@@ -575,6 +627,9 @@ class RemoteSessionProvider extends ChangeNotifier {
 
   void _fail(String reason, String message) {
     if (stage == RemoteStage.failed) return;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    releaseAllKeys();
     failure = RemoteFailure(reason, message);
     stage = RemoteStage.failed;
     _stopTicking();
@@ -656,7 +711,21 @@ class RemoteSessionProvider extends ChangeNotifier {
 
   void key(String code, bool down, {List<String> modifiers = const []}) {
     if (!canForwardInput) return;
+    if (down) {
+      _heldKeys.add(code);
+    } else {
+      _heldKeys.remove(code);
+    }
     _peer?.key(code, down, modifiers: modifiers);
+  }
+
+  /// 退出会话、切后台、关闭键盘时统一抬起，避免被控端按键卡住。
+  void releaseAllKeys() {
+    final held = _heldKeys.toList();
+    _heldKeys.clear();
+    for (final code in held) {
+      _peer?.key(code, false);
+    }
   }
 
   void keyCombo(List<String> keys) {
@@ -825,6 +894,7 @@ class RemoteSessionProvider extends ChangeNotifier {
 
   Future<void> endSession({bool notifyPeer = true}) async {
     _closedByUser = true;
+    releaseAllKeys();
     if (notifyPeer) {
       try {
         _signaling.closeSession();
@@ -864,6 +934,7 @@ class RemoteSessionProvider extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _closedByUser = true;
+    releaseAllKeys();
     _durationTimer?.cancel();
     _uiTicker?.cancel();
     _reconnectTimer?.cancel();

@@ -236,17 +236,21 @@ class _LoginPageState extends State<LoginPage> {
       final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
       if (!launched) throw Exception('无法打开授权页面');
       if (!mounted) return;
-      final code = await showTextInputDialog(
-        context,
-        title: '${channel.name}授权',
-        hint: '完成授权后粘贴回调 code（可选）',
-        confirmText: '完成登录',
-        maxLength: 512,
-      );
-      if (code == null || code.isEmpty) return;
+      // 等待 kkremote://oauth/callback 深链回跳，不再要求用户手动粘贴 code。
+      final callback = await waitForOAuthCallback(context, channel.name);
+      if (callback == null) return;
+      if (callback.error.isNotEmpty) {
+        throw Exception('授权失败：${callback.error}');
+      }
+      if (callback.code.isEmpty) {
+        throw Exception('授权未返回 code，请重试');
+      }
+      if (callback.state.isNotEmpty && callback.state != state) {
+        throw Exception('授权状态不匹配，请重新发起登录');
+      }
       final result = await auth.oauthLogin(
         provider: channel.provider,
-        code: code,
+        code: callback.code,
         state: state,
       );
       if (!mounted) return;

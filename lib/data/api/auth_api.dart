@@ -107,6 +107,8 @@ class AuthApi {
   Future<Map<String, dynamic>> oauthUrl(String provider) async {
     final data = await _api.post('/client/auth/oauth/$provider/url', data: {
       'client': 'mobile',
+      // 服务端支持时使用自定义 scheme 直接回跳 App；不支持时忽略此字段。
+      'redirectUri': 'kkremote://oauth/callback',
     });
     return asMap(data);
   }

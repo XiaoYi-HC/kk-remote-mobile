@@ -361,6 +361,21 @@ class _ScanPageState extends State<ScanPage>
     if (mounted) setState(() => _starting = false);
   }
 
+  Future<void> _retryScan() async {
+    _handled = false;
+    _success = false;
+    _hintTimer?.cancel();
+    if (mounted) setState(() => _hint = null);
+    try {
+      // noDuplicates 会记住同一二维码，重启采集流后才能再次回调。
+      await _controller.stop();
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await _controller.start();
+    } catch (_) {
+      _showHint('摄像头启动失败，请稍后重试', force: true);
+    }
+  }
+
   String get _errorTitle {
     switch (_cameraError?.errorCode) {
       case MobileScannerErrorCode.unsupported:
@@ -664,18 +679,31 @@ class _ScanPageState extends State<ScanPage>
       left: 32,
       right: 32,
       bottom: MediaQuery.paddingOf(context).bottom + 118,
-      child: IgnorePointer(
-        child: Center(
+      child: Center(
+        child: GestureDetector(
+          onTap: _retryScan,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             decoration: BoxDecoration(
               color: Colors.black.withAlpha(190),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(
-              _hint!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _hint!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+                if (_hint!.contains('未识别')) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    '点此重新扫描',
+                    style: TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ],
             ),
           ),
         ),

@@ -126,7 +126,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get keepScreenOn => getBool(SettingsKeys.keepScreenOn, fallback: true);
   double get fontScale => getDouble(SettingsKeys.fontScale, fallback: 1.0);
   double get uiScale => getDouble(SettingsKeys.uiScale, fallback: 1.0);
-  double get effectiveTextScale => (fontScale * uiScale).clamp(0.8, 1.8).toDouble();
+  double get effectiveTextScale => (fontScale * uiScale).clamp(0.7, 1.85).toDouble();
   String get orientationLock => getString(SettingsKeys.orientationLock, fallback: 'auto');
 
   bool get audioEnabled => getBool(SettingsKeys.audioEnabled, fallback: true);

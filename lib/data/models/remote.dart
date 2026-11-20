@@ -162,13 +162,16 @@ class RemoteFailure {
       case 'network_unreachable':
         return const RemoteFailure('network_unreachable', '网络不可达，请切换网络后重试');
       case 'device_offline':
-        return const RemoteFailure('device_offline', '设备已离线，请确认被控端在线');
+      case 'peer_offline':
+        return const RemoteFailure('peer_offline', '对方设备已离线，请确认被控端在线');
       case 'auth_failed':
         return const RemoteFailure('auth_failed', '验证码或无人值守密码错误');
       case 'version_incompatible':
         return const RemoteFailure('version_incompatible', '双方版本不兼容，请升级后重试');
+      case 'session_expired':
+        return const RemoteFailure('session_expired', '会话已过期，请重新发起连接');
       default:
-        return const RemoteFailure('internal_error', '连接失败，请稍后重试');
+        return const RemoteFailure('internal_error', '连接已中断，请点击重新连接');
     }
   }
 }

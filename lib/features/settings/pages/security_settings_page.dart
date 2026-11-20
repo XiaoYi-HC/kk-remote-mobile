@@ -28,6 +28,16 @@ class SecuritySettingsPage extends StatelessWidget {
       await settings.setBool(SettingsKeys.appLockEnabled, false);
       return;
     }
+    final supported = await AppLockService.instance.isDeviceSupported();
+    if (!supported) {
+      if (!context.mounted) return;
+      await showInfoDialog(
+        context,
+        title: '无法开启应用锁',
+        content: '当前设备未设置锁屏密码或未录入指纹/面容。请先在系统设置中设置锁屏密码后再开启应用锁。',
+      );
+      return;
+    }
     final authenticated = await AppLockService.instance.authenticate(
       reason: '验证身份以开启 KK远程 应用锁',
     );
@@ -81,7 +91,7 @@ class SecuritySettingsPage extends StatelessWidget {
                 ),
               SettingsSwitchTile(
                 title: '剪贴板同步',
-                subtitle: '手机与电脑之间自动同步复制的文字',
+                subtitle: '支持手动同步手机剪贴板文字到电脑',
                 value: settings.clipboardSync,
                 onChanged: (value) => settings.setBool(SettingsKeys.clipboardSync, value),
                 showDivider: false,

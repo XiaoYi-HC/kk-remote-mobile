@@ -25,14 +25,39 @@ class AboutPage extends StatefulWidget {
 
 class _AboutPageState extends State<AboutPage> {
   String _version = AppConstants.appVersion;
+  String _currentVersion = AppConstants.appVersion;
   bool _checking = false;
 
   @override
   void initState() {
     super.initState();
     PackageInfo.fromPlatform().then((info) {
-      if (mounted) setState(() => _version = '${info.version} (${info.buildNumber})');
+      if (!mounted) return;
+      setState(() {
+        _currentVersion = info.version;
+        _version = '${info.version} (${info.buildNumber})';
+      });
     });
+  }
+
+  int _compareVersion(String a, String b) {
+    List<int> parse(String value) {
+      return value
+          .split('+')
+          .first
+          .split('.')
+          .map((part) => int.tryParse(part) ?? 0)
+          .toList();
+    }
+
+    final left = parse(a);
+    final right = parse(b);
+    for (var i = 0; i < 3; i++) {
+      final x = i < left.length ? left[i] : 0;
+      final y = i < right.length ? right[i] : 0;
+      if (x != y) return x.compareTo(y);
+    }
+    return 0;
   }
 
   Future<void> _checkUpdate() async {
@@ -41,7 +66,7 @@ class _AboutPageState extends State<AboutPage> {
       final platform = Platform.isIOS ? 'ios' : 'android';
       final data = asMap(await context.read<AppServices>().api.get(
             '/client/versions/latest',
-            query: {'platform': platform, 'version': AppConstants.appVersion},
+            query: {'platform': platform, 'version': _currentVersion},
           ));
       if (!mounted) return;
       if (data.isEmpty) {
@@ -52,7 +77,7 @@ class _AboutPageState extends State<AboutPage> {
       final changelog = asString(data['changelog']);
       final downloadUrl = asString(data['downloadUrl']);
       final force = asBool(data['forceUpdate']);
-      if (version.isEmpty || version == AppConstants.appVersion) {
+      if (version.isEmpty || _compareVersion(version, _currentVersion) <= 0) {
         await showInfoDialog(context, title: '检查更新', content: '当前已是最新版本。');
         return;
       }

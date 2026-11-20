@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -38,8 +40,27 @@ class NotificationSettingsPage extends StatelessWidget {
                 subtitle: '客服回复、设备离线与公告提醒',
                 value: settings.notificationEnabled,
                 onChanged: (value) async {
+                  if (value) {
+                    final services = context.read<AppServices>();
+                    final granted = await services.notifications.requestPermission();
+                    if (!context.mounted) return;
+                    if (!granted) {
+                      // 系统权限被拒绝时回滚开关，避免显示“已开启”但收不到通知。
+                      await settings.setBool(SettingsKeys.notificationEnabled, false);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('系统通知权限未开启'),
+                          action: SnackBarAction(
+                            label: '去设置',
+                            onPressed: openAppSettings,
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                  }
                   await settings.setBool(SettingsKeys.notificationEnabled, value);
-                  if (value) await _requestSystemPermission(context);
                 },
               ),
               SettingsSwitchTile(
@@ -49,6 +70,19 @@ class NotificationSettingsPage extends StatelessWidget {
                 onChanged: (value) async {
                   await settings.setBool(SettingsKeys.incomingCallPush, value);
                   if (value) await _requestSystemPermission(context);
+                },
+              ),
+              FutureBuilder<PermissionStatus>(
+                future: Permission.notification.status,
+                builder: (context, snapshot) {
+                  final granted = snapshot.data?.isGranted ?? true;
+                  if (granted) return const SizedBox.shrink();
+                  return SettingsTile(
+                    title: '系统通知权限未开启',
+                    subtitle: '点击前往系统设置允许 KK远程 发送通知',
+                    leading: const IconBadge(icon: Icons.notifications_off_outlined),
+                    onTap: openAppSettings,
+                  );
                 },
               ),
               SettingsTile(
@@ -69,31 +103,33 @@ class NotificationSettingsPage extends StatelessWidget {
                 value: settings.backgroundKeepAlive,
                 onChanged: (value) => settings.setBool(SettingsKeys.backgroundKeepAlive, value),
               ),
-              SettingsTile(
-                title: '电池优化白名单',
-                subtitle: '将 KK远程 加入系统电池优化白名单，减少后台被清理',
-                leading: const IconBadge(icon: Icons.battery_saver_outlined),
-                onTap: () async {
-                  final status = await Permission.ignoreBatteryOptimizations.request();
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(status.isGranted ? '已加入电池优化白名单' : '未获得电池优化豁免权限')),
-                  );
-                },
-              ),
-              SettingsTile(
-                title: '悬浮窗权限',
-                subtitle: '用于画中画小窗在后台继续查看远程画面',
-                leading: const IconBadge(icon: Icons.picture_in_picture_alt_rounded),
-                onTap: () async {
-                  final status = await Permission.systemAlertWindow.request();
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(status.isGranted ? '悬浮窗权限已开启' : '请前往系统设置允许悬浮窗')),
-                  );
-                },
-                showDivider: false,
-              ),
+              if (Platform.isAndroid)
+                SettingsTile(
+                  title: '电池优化白名单',
+                  subtitle: '将 KK远程 加入系统电池优化白名单，减少后台被清理',
+                  leading: const IconBadge(icon: Icons.battery_saver_outlined),
+                  onTap: () async {
+                    final status = await Permission.ignoreBatteryOptimizations.request();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(status.isGranted ? '已加入电池优化白名单' : '未获得电池优化豁免权限')),
+                    );
+                  },
+                ),
+              if (Platform.isAndroid)
+                SettingsTile(
+                  title: '悬浮窗权限',
+                  subtitle: '用于画中画小窗在后台继续查看远程画面',
+                  leading: const IconBadge(icon: Icons.picture_in_picture_alt_rounded),
+                  onTap: () async {
+                    final status = await Permission.systemAlertWindow.request();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(status.isGranted ? '悬浮窗权限已开启' : '请前往系统设置允许悬浮窗')),
+                    );
+                  },
+                  showDivider: false,
+                ),
             ],
           ),
           Padding(
