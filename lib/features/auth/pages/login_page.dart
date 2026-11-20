@@ -77,16 +77,28 @@ class _LoginPageState extends State<LoginPage> {
     return codeEnabled;
   }
 
+  /// 当前验证码表单是否按邮箱处理。
+  /// 不能只看 _emailMode：当后台关闭手机号登录、只开邮箱时，
+  /// 表单已经按邮箱展示，但 _emailMode 仍是初始值 false，
+  /// 会导致发送验证码时用手机号校验并提示“手机号格式不正确”。
+  bool _useEmailForCode(ConfigProvider config) {
+    final emailEnabled = config.loginEnabled('email');
+    final phoneEnabled = config.loginEnabled('phone');
+    return emailEnabled && (_emailMode || !phoneEnabled);
+  }
+
   Future<bool> _sendCode() async {
+    final config = context.read<ConfigProvider>();
+    final useEmail = _useEmailForCode(config);
     final value = _phoneController.text.trim();
-    final error = _emailMode ? Validators.email(value) : Validators.phone(value);
+    final error = useEmail ? Validators.email(value) : Validators.phone(value);
     if (error != null) {
       setState(() => _inlineError = error);
       return false;
     }
     try {
       final api = context.read<AppServices>().authApi;
-      if (_emailMode) {
+      if (useEmail) {
         await api.sendEmail(email: value, scene: 'login');
       } else {
         await api.sendSms(phone: value, scene: 'login');
@@ -107,10 +119,11 @@ class _LoginPageState extends State<LoginPage> {
     if (context.read<AuthProvider>().loading) return;
     if (!(_phoneFormKey.currentState?.validate() ?? false)) return;
     final auth = context.read<AuthProvider>();
+    final useEmail = _useEmailForCode(context.read<ConfigProvider>());
     try {
       final account = _phoneController.text.trim();
       final code = _codeController.text.trim();
-      final result = _emailMode
+      final result = useEmail
           ? await auth.loginEmail(email: account, code: code)
           : await auth.loginPhone(phone: account, code: code);
       if (!mounted || result == null) return;
