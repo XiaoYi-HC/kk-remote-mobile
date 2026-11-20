@@ -22,7 +22,7 @@ echo "== CocoaPods 安装 =="
 ( cd ios && pod install --repo-update )
 
 echo "== 编译 iOS Release（不签名）=="
-flutter build ios --release --no-codesign \
+flutter build ios --release --no-codesign -v \
   --dart-define=API_BASE_URL="$API_BASE_URL" \
   --dart-define=SIGNALING_URL="$SIGNALING_URL"
 
