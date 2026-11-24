@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../../../core/theme/app_colors.dart';
-import '../../../state/app_services.dart';
-import '../host_controller.dart';
-import '../host_models.dart';
+import '../../core/theme/app_colors.dart';
+import '../../state/app_services.dart';
+import 'host_controller.dart';
+import 'host_models.dart';
 
 /// 移动端被控：让桌面端观看本机屏幕并进行双向语音对讲。
 class HostSharePage extends StatefulWidget {
