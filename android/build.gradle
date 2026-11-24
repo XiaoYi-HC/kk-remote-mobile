@@ -13,6 +13,15 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+// 部分 Flutter 插件默认用 android-34 编译，但其依赖的 AAR 要求 compileSdk >= 36。
+subprojects {
+    afterEvaluate { project ->
+        if (project.extensions.findByName('android') != null) {
+            project.android.compileSdk = 36
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.layout.buildDirectory
 }
