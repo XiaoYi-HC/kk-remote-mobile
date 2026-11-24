@@ -59,5 +59,12 @@ unless embed_phase
 end
 embed_phase.add_file_reference(target.product_reference, true)
 
+# Xcode 要求扩展嵌入阶段位于 Flutter 的 Thin Binary 之前，
+# 否则会报 "Cycle inside Runner; building could produce unreliable results"。
+phases = runner.build_phases
+phases.delete(embed_phase)
+thin = phases.find { |p| p.display_name.to_s == 'Thin Binary' }
+phases.insert(thin ? phases.index(thin) : phases.size, embed_phase)
+
 project.save
 puts "已添加 #{target_name}，App Group: #{app_group}"
