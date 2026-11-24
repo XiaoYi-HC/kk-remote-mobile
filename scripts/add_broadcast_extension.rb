@@ -34,21 +34,16 @@ target.build_configurations.each do |config|
   settings['PRODUCT_MODULE_NAME'] = target_name
   settings['WRAPPER_EXTENSION'] = 'appex'
   settings['INFOPLIST_FILE'] = "#{target_name}/Info.plist"
-  settings['CODE_SIGN_ENTITLEMENTS'] = "#{target_name}/#{target_name}.entitlements"
   settings['SWIFT_VERSION'] = '5.0'
   settings['APPLICATION_EXTENSION_API_ONLY'] = 'YES'
   settings['SKIP_INSTALL'] = 'YES'
   settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
   settings['TARGETED_DEVICE_FAMILY'] = '1,2'
-  settings['MARKETING_VERSION'] = '1.2.0'
-  settings['CURRENT_PROJECT_VERSION'] = '36'
+  settings['MARKETING_VERSION'] = '1.2.1'
+  settings['CURRENT_PROJECT_VERSION'] = '37'
   settings['GENERATE_INFOPLIST_FILE'] = 'NO'
   settings['LD_RUNPATH_SEARCH_PATHS'] =
     '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks'
-end
-
-runner.build_configurations.each do |config|
-  config.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Runner/Runner.entitlements'
 end
 
 runner.add_dependency(target)

@@ -18,6 +18,9 @@ echo "== SIGNALING_URL: $SIGNALING_URL =="
 echo "== 拉取依赖 =="
 flutter pub get
 
+echo "== 应用 iOS 屏幕共享 TCP 补丁 =="
+python3 scripts/patch_screen_capture_tcp.py
+
 echo "== CocoaPods 安装 =="
 ( cd ios && pod install --repo-update )
 
