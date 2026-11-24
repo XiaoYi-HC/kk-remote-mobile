@@ -316,23 +316,6 @@ class HostShareController extends ChangeNotifier {
       ],
     });
     _pc = pc;
-    final videoTracks = _screenStream!.getVideoTracks();
-    final videoTx = await pc.addTransceiver(
-      kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
-      init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendOnly),
-    );
-    if (videoTracks.isNotEmpty) {
-      await videoTx.sender.replaceTrack(videoTracks.first);
-    }
-    final audioTx = await pc.addTransceiver(
-      kind: RTCRtpMediaType.RTCRtpMediaTypeAudio,
-      init: RTCRtpTransceiverInit(direction: TransceiverDirection.SendRecv),
-    );
-    _micSender = audioTx.sender;
-    final micTracks = _micStream?.getAudioTracks() ?? const <MediaStreamTrack>[];
-    if (micTracks.isNotEmpty) {
-      await _micSender!.replaceTrack(micTracks.first);
-    }
     pc.onIceCandidate = (candidate) {
       final value = candidate.candidate;
       if (value == null || value.isEmpty) return;
@@ -346,11 +329,60 @@ class HostShareController extends ChangeNotifier {
     pc.onConnectionState = (state) {
       if (state == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _setStatus(HostShareStatus.sharing);
+        _signaling.sendSessionState(stage: 'p2p_connected', transport: 'p2p');
       } else if (state == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+        _signaling.sendSessionState(stage: 'failed', failureReason: 'network_unreachable');
         _fail('网络连接失败，请让桌面端重新连接');
       }
     };
     return pc;
+  }
+
+  MediaStreamTrack? get _videoTrack {
+    final tracks = _screenStream?.getVideoTracks() ?? const <MediaStreamTrack>[];
+    return tracks.isEmpty ? null : tracks.first;
+  }
+
+  MediaStreamTrack? get _micTrack {
+    final tracks = _micStream?.getAudioTracks() ?? const <MediaStreamTrack>[];
+    return tracks.isEmpty ? null : tracks.first;
+  }
+
+  /// 等待 ReplayKit 广播真正开始出画面（getDisplayMedia 返回时轨道可能还没就绪）。
+  Future<MediaStreamTrack?> _waitVideoTrack() async {
+    for (var i = 0; i < 20; i++) {
+      final track = _videoTrack;
+      if (track != null) return track;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (_disposed || !_sharing) return null;
+    }
+    return _videoTrack;
+  }
+
+  /// 把本地屏幕/麦克风轨道挂到远端 offer 生成的 transceiver 上。
+  ///
+  /// 必须在 setRemoteDescription 之后调用并显式设置方向：
+  /// 应用远端 offer 时若 sender 还没有 track，sendonly 会被降级成 inactive、
+  /// sendrecv 会被降级成 recvonly，导致桌面端收不到画面和声音。
+  Future<void> _attachLocalTracks(RTCPeerConnection pc) async {
+    final videoTrack = await _waitVideoTrack();
+    final micTrack = _micTrack;
+    final transceivers = await pc.getTransceivers();
+    for (final transceiver in transceivers) {
+      final kind = transceiver.receiver.track.kind;
+      if (kind == 'video') {
+        await transceiver.setDirection(TransceiverDirection.SendOnly);
+        if (videoTrack != null) {
+          await transceiver.sender.replaceTrack(videoTrack);
+        }
+      } else if (kind == 'audio') {
+        await transceiver.setDirection(TransceiverDirection.SendRecv);
+        _micSender = transceiver.sender;
+        if (micTrack != null) {
+          await transceiver.sender.replaceTrack(micTrack);
+        }
+      }
+    }
   }
 
   Future<void> _handleOffer(String sdp, String sessionId) async {
@@ -374,6 +406,11 @@ class HostShareController extends ChangeNotifier {
         } catch (_) {}
       }
       _pendingCandidates.clear();
+      await _attachLocalTracks(pc);
+      if (_videoTrack == null) {
+        _fail('没有拿到屏幕画面：请先在控制中心开始「屏幕录制 → KK远程屏幕共享」，再重新连接');
+        return;
+      }
       final answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       _signaling.sendAnswer(answer.sdp ?? '', sessionId: _sessionId);
