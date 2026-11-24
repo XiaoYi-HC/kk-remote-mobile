@@ -29,6 +29,16 @@ final class SocketWriter {
         let socketFD = socket(AF_INET, SOCK_STREAM, 0)
         if socketFD < 0 { return false }
 
+        // 主 App 关闭连接后继续写会触发 SIGPIPE 直接杀掉扩展进程，这里禁用掉。
+        var noSigPipe: Int32 = 1
+        setsockopt(
+            socketFD,
+            SOL_SOCKET,
+            SO_NOSIGPIPE,
+            &noSigPipe,
+            socklen_t(MemoryLayout<Int32>.size)
+        )
+
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = port.bigEndian
