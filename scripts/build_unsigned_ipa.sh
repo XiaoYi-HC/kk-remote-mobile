@@ -34,7 +34,7 @@ if [ -f scripts/add_broadcast_extension.rb ]; then
 fi
 
 echo "== 编译 iOS Release（不签名）=="
-flutter build ios --release --no-codesign -v \
+flutter build ios --release --no-codesign \
   --dart-define=API_BASE_URL="$API_BASE_URL" \
   --dart-define=SIGNALING_URL="$SIGNALING_URL"
 
