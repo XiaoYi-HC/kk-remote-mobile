@@ -19,6 +19,8 @@ runner = project.targets.find { |t| t.name == 'Runner' }
 raise '未找到 Runner target' unless runner
 
 target = project.new_target(:app_extension, target_name, :ios, '15.0')
+target.product_reference.name = target_name
+target.product_reference.path = "#{target_name}.appex"
 group = project.main_group.find_subpath(target_name, true)
 group.set_source_tree('SOURCE_ROOT')
 group.set_path(target_name)
@@ -28,6 +30,9 @@ target.add_file_references([source_ref])
 target.build_configurations.each do |config|
   settings = config.build_settings
   settings['PRODUCT_BUNDLE_IDENTIFIER'] = extension_bundle_id
+  settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
+  settings['PRODUCT_MODULE_NAME'] = target_name
+  settings['WRAPPER_EXTENSION'] = 'appex'
   settings['INFOPLIST_FILE'] = "#{target_name}/Info.plist"
   settings['CODE_SIGN_ENTITLEMENTS'] = "#{target_name}/#{target_name}.entitlements"
   settings['SWIFT_VERSION'] = '5.0'
