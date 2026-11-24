@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -51,6 +53,29 @@ class NativeBridge {
       return true;
     } catch (_) {
       return true;
+    }
+  }
+
+  /// Android 14+ 屏幕共享需要先启动 mediaProjection 类型的前台服务。
+  Future<void> startScreenShareService() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('startScreenShareService');
+    } on PlatformException catch (error) {
+      debugPrint('startScreenShareService failed: ${error.message}');
+    } on MissingPluginException {
+      // ignore
+    }
+  }
+
+  Future<void> stopScreenShareService() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('stopScreenShareService');
+    } on PlatformException catch (error) {
+      debugPrint('stopScreenShareService failed: ${error.message}');
+    } on MissingPluginException {
+      // ignore
     }
   }
 

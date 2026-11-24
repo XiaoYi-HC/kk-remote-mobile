@@ -21,6 +21,18 @@ flutter pub get
 echo "== CocoaPods 安装 =="
 ( cd ios && pod install --repo-update )
 
+echo "== 配置 iOS 屏幕共享扩展 =="
+if [ -f scripts/add_broadcast_extension.rb ]; then
+  if command -v ruby >/dev/null 2>&1; then
+    if ! ruby -e "require 'xcodeproj'" >/dev/null 2>&1; then
+      gem install xcodeproj --no-document || true
+    fi
+    ruby scripts/add_broadcast_extension.rb || echo "警告：屏幕共享扩展配置失败，iOS 端将无法共享屏幕"
+  else
+    echo "警告：未找到 ruby，跳过屏幕共享扩展配置"
+  fi
+fi
+
 echo "== 编译 iOS Release（不签名）=="
 flutter build ios --release --no-codesign \
   --dart-define=API_BASE_URL="$API_BASE_URL" \

@@ -21,6 +21,7 @@ import '../features/devices/pages/device_detail_page.dart';
 import '../features/devices/pages/scan_page.dart';
 import '../features/devices/state/connect_args.dart';
 import '../features/files/pages/remote_files_page.dart';
+import '../features/host/host_share_page.dart';
 import '../features/remote/pages/remote_page.dart';
 import '../features/remote/state/remote_args.dart';
 import '../features/shell/pages/home_shell.dart';
@@ -98,6 +99,7 @@ GoRouter buildRouter(AuthProvider auth) {
         },
       ),
       GoRoute(path: '/remote/files', builder: (context, state) => const RemoteFilesPage()),
+      GoRoute(path: '/host-share', builder: (context, state) => const HostSharePage()),
       GoRoute(
         path: '/device/:id',
         builder: (context, state) {
