@@ -19,10 +19,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Flutter 3.24.5
+      - name: Setup Flutter 3.50.0
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5'
+          flutter-version: '3.50.0'
           channel: stable
           cache: true
 
@@ -37,7 +37,6 @@ jobs:
           API_BASE_URL: https://shop1.new.tg/api/v1
           SIGNALING_URL: wss://shop1.new.tg/ws/signaling
         run: |
-          rm -f pubspec.lock
           flutter pub get
           flutter build apk --release \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
