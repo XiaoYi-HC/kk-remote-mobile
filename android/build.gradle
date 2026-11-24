@@ -9,17 +9,21 @@ rootProject.layout.buildDirectory.set(file("../build"))
 subprojects {
     project.layout.buildDirectory.set(rootProject.layout.buildDirectory.dir(project.name))
 }
-subprojects {
-    project.evaluationDependsOn(":app")
-}
 
 // 部分 Flutter 插件默认用 android-34 编译，但其依赖的 AAR 要求 compileSdk >= 36。
-subprojects {
-    afterEvaluate { project ->
-        if (project.extensions.findByName('android') != null) {
-            project.android.compileSdk = 36
+// 必须在 evaluationDependsOn 之前注册，否则插件模块可能已经被评估。
+subprojects { project ->
+    if (project.name != 'app') {
+        project.afterEvaluate { evaluated ->
+            if (evaluated.extensions.findByName('android') != null) {
+                evaluated.android.compileSdk = 36
+            }
         }
     }
+}
+
+subprojects {
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register("clean", Delete) {
