@@ -44,7 +44,7 @@ final class SocketWriter {
             Darwin.close(socketFD)
             return false
         }
-        withUnsafeMutablePointer(to: &addr.sun_path) { pointer in
+        withUnsafeMutablePointer(to: &addr.sun_path.0) { pointer in
             pointer.withMemoryRebound(to: CChar.self, capacity: capacity) { dst in
                 pathBytes.withUnsafeBufferPointer { src in
                     guard let base = src.baseAddress else { return }

@@ -18,6 +18,9 @@ class HostApi {
 
   void setDeviceToken(String? token) => _api.setToken(token);
 
+  /// 注册前可临时使用当前登录用户的 token，便于后端绑定设备归属。
+  void setToken(String? token) => _api.setToken(token);
+
   Future<HostRegistration> register({
     required String deviceUuid,
     required String name,
