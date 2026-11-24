@@ -212,6 +212,10 @@ class HostShareController extends ChangeNotifier {
     if (_sharing || _disposed) return;
     error = null;
     try {
+      // 先申请麦克风权限，再启动前台服务，避免 Android 14 因缺少录音权限拒绝 microphone 类型。
+      if (micEnabled) {
+        await _ensureMic();
+      }
       if (Platform.isAndroid) {
         await _services.native.startScreenShareService();
       }
@@ -220,9 +224,6 @@ class HostShareController extends ChangeNotifier {
         'audio': false,
       };
       _screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
-      if (micEnabled) {
-        await _ensureMic();
-      }
       _sharing = true;
       notifyListeners();
       if (status != HostShareStatus.connecting && status != HostShareStatus.incoming) {
