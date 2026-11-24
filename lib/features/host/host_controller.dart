@@ -369,7 +369,7 @@ class HostShareController extends ChangeNotifier {
     final micTrack = _micTrack;
     final transceivers = await pc.getTransceivers();
     for (final transceiver in transceivers) {
-      final kind = transceiver.receiver.track.kind;
+      final kind = transceiver.receiver.track?.kind ?? '';
       if (kind == 'video') {
         await transceiver.setDirection(TransceiverDirection.SendOnly);
         if (videoTrack != null) {
