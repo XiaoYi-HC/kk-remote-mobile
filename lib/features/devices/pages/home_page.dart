@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/device.dart';
+import '../../../state/app_services.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/app_dialogs.dart';
 import '../../../widgets/app_sheet.dart';
@@ -12,6 +13,7 @@ import '../../../widgets/empty_state.dart';
 import '../../../widgets/loading_view.dart';
 import '../../../widgets/user_avatar.dart';
 import '../../auth/state/auth_provider.dart';
+import '../../host/host_controller.dart';
 import '../state/connect_args.dart';
 import '../state/devices_provider.dart';
 import '../widgets/device_card.dart';
@@ -666,49 +668,66 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHostShareCard(BuildContext context) {
+    final controller = HostShareController.shared(context.read<AppServices>());
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Material(
-        color: AppColors.primarySoft,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => context.push('/host-share'),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withAlpha(28),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.screen_share_rounded, color: AppColors.primary, size: 20),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '本机屏幕共享',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final active = controller.status == HostShareStatus.sharing;
+          final subtitle = active
+              ? '正在共享中 · 桌面端正在观看'
+              : (controller.sharing ? '共享已就绪，等待桌面端连接' : '让电脑观看这台手机的画面，支持语音对讲');
+          return Material(
+            color: AppColors.primarySoft,
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => context.push('/host-share'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withAlpha(28),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      SizedBox(height: 2),
-                      Text(
-                        '让电脑观看这台手机的画面，支持语音对讲',
-                        style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                      child: Icon(
+                        Icons.screen_share_rounded,
+                        color: active ? AppColors.success : AppColors.primary,
+                        size: 20,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '本机屏幕共享',
+                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: active ? AppColors.success : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                  ],
                 ),
-                const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

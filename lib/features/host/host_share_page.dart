@@ -24,15 +24,16 @@ class _HostSharePageState extends State<HostSharePage> {
   @override
   void initState() {
     super.initState();
-    _controller = HostShareController(context.read<AppServices>());
+    // 使用全局单例：离开本页不会停止共享，只有用户主动点击“停止共享”才断开。
+    _controller = HostShareController.shared(context.read<AppServices>());
     _controller.addListener(_onChanged);
-    _controller.init();
+    _controller.ensureReady();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onChanged());
   }
 
   @override
   void dispose() {
     _controller.removeListener(_onChanged);
-    _controller.dispose();
     super.dispose();
   }
 
@@ -237,13 +238,12 @@ class _HostSharePageState extends State<HostSharePage> {
           const Divider(height: 24),
           Row(
             children: [
-              const Text('临时验证码', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              const Text('验证码', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               const Spacer(),
-              if (reg.verificationExpiresAt > 0)
-                Text(
-                  '${_minutesLeft(reg.verificationExpiresAt)} 分钟内有效',
-                  style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
-                ),
+              const Text(
+                '长期有效，不会自动变更',
+                style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+              ),
             ],
           ),
           const SizedBox(height: 4),
@@ -275,12 +275,6 @@ class _HostSharePageState extends State<HostSharePage> {
         ],
       ),
     );
-  }
-
-  int _minutesLeft(int expiresAt) {
-    final left = expiresAt - DateTime.now().millisecondsSinceEpoch;
-    if (left <= 0) return 0;
-    return (left / 60000).ceil();
   }
 
   Widget _buildShareCard() {

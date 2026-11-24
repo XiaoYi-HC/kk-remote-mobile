@@ -23,9 +23,17 @@ class HostShareController extends ChangeNotifier {
 
   final AppServices _services;
 
+  static HostShareController? _shared;
+
+  /// 全局单例：离开屏幕共享页面后会话仍然保持，只有用户主动停止才会断开。
+  static HostShareController shared(AppServices services) {
+    return _shared ??= HostShareController(services);
+  }
+
   static const _deviceUuidKey = 'host_device_uuid';
   static const _deviceSecretKey = 'host_device_secret';
   static const _deviceTokenKey = 'host_device_token';
+  static const _verificationCodeKey = 'host_verification_code';
 
   late final HostApi _api = HostApi(baseUrl: _services.settings.resolvedApiBaseUrl);
   final SignalingClient _signaling = SignalingClient();
@@ -50,7 +58,7 @@ class HostShareController extends ChangeNotifier {
   final List<RTCIceCandidate> _pendingCandidates = [];
   String? _pendingOffer;
   bool _remoteDescriptionSet = false;
-  Timer? _codeTimer;
+  bool _initializing = false;
 
   bool get sharing => _sharing;
   bool get online => _signaling.isConnected;
@@ -58,8 +66,16 @@ class HostShareController extends ChangeNotifier {
 
   String get platformLabel => Platform.isIOS ? 'iOS' : 'Android';
 
+  /// 页面进入时调用：已就绪就直接复用，避免重复注册与重连。
+  Future<void> ensureReady() async {
+    if (_disposed || _initializing) return;
+    if (registration != null && status != HostShareStatus.error) return;
+    await init();
+  }
+
   Future<void> init() async {
-    if (_disposed) return;
+    if (_disposed || _initializing) return;
+    _initializing = true;
     _setStatus(HostShareStatus.registering);
     try {
       final store = _services.store;
@@ -83,14 +99,25 @@ class HostShareController extends ChangeNotifier {
       if (reg.deviceToken.isNotEmpty) {
         await store.setString(_deviceTokenKey, reg.deviceToken);
       }
-      registration = reg;
-      _api.setDeviceToken(reg.deviceToken);
+      // 验证码长期有效：后端只在首次注册时下发，之后复用本地保存的值。
+      final savedCode = store.getString(_verificationCodeKey) ?? '';
+      var effective = reg;
+      if (reg.verificationCode.isNotEmpty) {
+        if (reg.verificationCode != savedCode) {
+          await store.setString(_verificationCodeKey, reg.verificationCode);
+        }
+      } else if (savedCode.isNotEmpty) {
+        effective = reg.copyWith(verificationCode: savedCode, verificationExpiresAt: 0);
+      }
+      registration = effective;
+      _api.setDeviceToken(effective.deviceToken);
       _iceServers = await _loadIceServers();
-      await _connectSignaling(reg);
+      await _connectSignaling(effective);
       _setStatus(HostShareStatus.ready);
-      _scheduleCodeRefresh();
     } catch (err) {
       _fail('注册设备失败：$err');
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -467,25 +494,7 @@ class HostShareController extends ChangeNotifier {
     }
   }
 
-  void _scheduleCodeRefresh() {
-    _codeTimer?.cancel();
-    _codeTimer = Timer.periodic(const Duration(minutes: 20), (_) async {
-      final reg = registration;
-      if (reg == null || _disposed) return;
-      try {
-        final (code, expires) = await _api.refreshVerificationCode();
-        if (code.isEmpty || _disposed) return;
-        registration = reg.copyWith(
-          verificationCode: code,
-          verificationExpiresAt: expires,
-        );
-        notifyListeners();
-      } catch (_) {}
-    });
-  }
-
   Future<void> retry() async {
-    _codeTimer?.cancel();
     await _eventSub?.cancel();
     await _signaling.close();
     await _closePeer();
@@ -508,7 +517,6 @@ class HostShareController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _codeTimer?.cancel();
     _eventSub?.cancel();
     _signaling.close();
     unawaited(_closePeer());
