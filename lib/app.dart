@@ -28,7 +28,7 @@ class KKRemoteApp extends StatefulWidget {
 }
 
 class _KKRemoteAppState extends State<KKRemoteApp> {
-  late final GoRouter _router = buildRouter(widget.auth);
+  late final GoRouter _router = buildRouter(widget.auth, navigatorKey: _navigatorKey);
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
@@ -67,7 +67,6 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
             GlobalCupertinoLocalizations.delegate,
           ],
           routerConfig: _router,
-          navigatorKey: _navigatorKey,
           builder: (context, child) {
             final media = MediaQuery.of(context);
             return MediaQuery(

@@ -46,8 +46,9 @@ import '../features/support/pages/help_page.dart';
 import '../features/support/pages/support_chat_page.dart';
 import '../features/support/pages/ticket_detail_page.dart';
 
-GoRouter buildRouter(AuthProvider auth) {
+GoRouter buildRouter(AuthProvider auth, {GlobalKey<NavigatorState>? navigatorKey}) {
   return GoRouter(
+    navigatorKey: navigatorKey,
     initialLocation: '/home',
     refreshListenable: auth,
     redirect: (context, state) {
