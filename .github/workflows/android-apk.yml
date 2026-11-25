@@ -38,6 +38,7 @@ jobs:
           SIGNALING_URL: wss://shop1.new.tg/ws/signaling
         run: |
           flutter pub get
+          python3 scripts/patch_android_screen_capture.py
           flutter build apk --release \
             --dart-define=API_BASE_URL="$API_BASE_URL" \
             --dart-define=SIGNALING_URL="$SIGNALING_URL"

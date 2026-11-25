@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 
 /**
  * 屏幕共享前台服务：Android 14+ 要求 MediaProjection 采集前必须存在
@@ -40,7 +41,15 @@ class ScreenShareService : Service() {
             ) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
-            startForeground(NOTIFICATION_ID, notification, types)
+            try {
+                startForeground(NOTIFICATION_ID, notification, types)
+            } catch (error: Exception) {
+                // 部分 ROM / 缺少投影授权时会拒绝 mediaProjection 类型的前台服务。
+                // 异常如果落到主线程会直接杀掉 App，这里必须兜住并优雅退出。
+                Log.e(TAG, "startForeground with mediaProjection failed", error)
+                stopSelf()
+                return START_NOT_STICKY
+            }
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
@@ -64,6 +73,7 @@ class ScreenShareService : Service() {
     }
 
     companion object {
+        private const val TAG = "ScreenShareService"
         private const val CHANNEL_ID = "kk_screen_share"
         private const val NOTIFICATION_ID = 4301
     }

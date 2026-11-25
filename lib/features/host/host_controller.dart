@@ -46,6 +46,7 @@ class HostShareController extends ChangeNotifier {
   bool micEnabled = true;
 
   bool _sharing = false;
+  bool _starting = false;
   bool _disposed = false;
   String _sessionId = '';
 
@@ -236,7 +237,10 @@ class HostShareController extends ChangeNotifier {
   }
 
   Future<void> startShare() async {
-    if (_sharing || _disposed) return;
+    // 授权弹窗期间可能被“接受连接”等路径二次调用，重复调用会复用同一个
+    // MediaProjection token，Android 14+ 会直接抛 SecurityException 闪退。
+    if (_sharing || _disposed || _starting) return;
+    _starting = true;
     error = null;
     try {
       // 先申请麦克风权限，再启动前台服务，避免 Android 14 因缺少录音权限拒绝 microphone 类型。
@@ -264,6 +268,8 @@ class HostShareController extends ChangeNotifier {
     } catch (err) {
       await stopShare();
       _fail('无法开始屏幕共享：$err');
+    } finally {
+      _starting = false;
     }
   }
 

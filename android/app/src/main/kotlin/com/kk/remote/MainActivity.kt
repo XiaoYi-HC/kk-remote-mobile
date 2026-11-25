@@ -1,23 +1,32 @@
 package com.kk.remote
 
+import android.app.NotificationManager
 import android.app.PictureInPictureParams
+import android.content.ContentValues
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.MediaStore
 import android.util.Rational
+import android.util.Log
 import android.view.InputDevice
 import android.view.WindowManager
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val channelName = "com.kk.remote/platform"
+    private var methodChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        methodChannel = channel
+        channel
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "isSupported" -> {
@@ -98,9 +107,85 @@ class MainActivity : FlutterActivity() {
                         stopService(Intent(this, RemoteForegroundService::class.java))
                         result.success(true)
                     }
+                    "startScreenShareService" -> {
+                        try {
+                            val intent = Intent(this, ScreenShareService::class.java)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(intent)
+                            } else {
+                                startService(intent)
+                            }
+                            result.success(true)
+                        } catch (error: Exception) {
+                            Log.e("MainActivity", "startScreenShareService failed", error)
+                            result.error(
+                                "foreground_service_failed",
+                                error.message ?: "无法启动屏幕共享服务",
+                                null
+                            )
+                        }
+                    }
+                    "stopScreenShareService" -> {
+                        stopService(Intent(this, ScreenShareService::class.java))
+                        result.success(true)
+                    }
+                    "canUseFullScreenIntent" -> {
+                        val allowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                            manager.canUseFullScreenIntent()
+                        } else {
+                            true
+                        }
+                        result.success(allowed)
+                    }
+                    "saveImageToGallery" -> saveImageToGallery(call.argument<String>("path"), result)
+                    "getInitialLink" -> result.success(intent?.dataString)
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.dataString?.let { link ->
+            methodChannel?.invokeMethod("onDeepLink", link)
+        }
+    }
+
+    private fun saveImageToGallery(path: String?, result: MethodChannel.Result) {
+        if (path.isNullOrEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            result.success(false)
+            return
+        }
+        Thread {
+            var success = false
+            try {
+                val bitmap = BitmapFactory.decodeFile(path)
+                if (bitmap != null) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, File(path).name)
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/KKRemote")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                    if (uri != null) {
+                        contentResolver.openOutputStream(uri)?.use { output ->
+                            success = bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                        }
+                        values.clear()
+                        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        contentResolver.update(uri, values, null, null)
+                        success = true
+                    }
+                    bitmap.recycle()
+                }
+            } catch (_: Exception) {
+                success = false
+            }
+            runOnUiThread { result.success(success) }
+        }.start()
     }
 
     private fun listGamepads(): List<Map<String, Any>> {
