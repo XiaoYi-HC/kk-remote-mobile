@@ -4,11 +4,11 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/download_paths.dart';
 import '../../../core/utils/json_utils.dart';
 import '../../../data/models/virtual_layout.dart';
 import '../../../state/app_services.dart';
@@ -77,7 +77,7 @@ class _GamepadSettingsPageState extends State<GamepadSettingsPage> {
 
   Future<void> _export() async {
     try {
-      final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+      final dir = await resolveDownloadDirectory();
       final file = File(p.join(
         dir.path,
         'KK远程按键布局_${DateTime.now().millisecondsSinceEpoch}.json',

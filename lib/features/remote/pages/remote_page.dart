@@ -11,12 +11,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/download_paths.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/utils/json_utils.dart';
 import '../../../data/models/remote.dart';
@@ -337,17 +337,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   Future<Directory> _downloadDirectory(SettingsProvider settings) async {
-    final configured = settings.downloadDir;
-    if (configured.isNotEmpty) {
-      final dir = Directory(configured);
-      if (!await dir.exists()) await dir.create(recursive: true);
-      return dir;
+    final dir = await resolveDownloadDirectory(configured: settings.downloadDir);
+    if (dir.path != settings.downloadDir) {
+      await settings.setString(SettingsKeys.downloadDir, dir.path);
     }
-    final downloads = await getDownloadsDirectory();
-    final dir = downloads == null
-        ? Directory(p.join((await getApplicationDocumentsDirectory()).path, 'KK远程'))
-        : Directory(p.join(downloads.path, 'KK远程'));
-    if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }
 

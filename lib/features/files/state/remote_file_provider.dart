@@ -5,9 +5,9 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/utils/download_paths.dart';
 import '../../../core/utils/json_utils.dart';
 import '../../../data/models/file_entry.dart';
 import '../../../data/models/session.dart';
@@ -94,38 +94,10 @@ class RemoteFileProvider extends ChangeNotifier {
 
   Future<void> _prepareDownloadDir() async {
     try {
-      Directory? dir;
-      final configured = services.settings.downloadDir;
-      if (configured.isNotEmpty) {
-        try {
-          final custom = Directory(configured);
-          if (!await custom.exists()) {
-            await custom.create(recursive: true);
-          }
-          dir = custom;
-        } catch (_) {
-          // 旧路径不可写（例如 iOS 容器根目录），回退到沙盒目录。
-          dir = null;
-        }
-      }
-      if (dir == null) {
-        if (Platform.isIOS) {
-          // iOS 无法写入容器下的 Downloads，改用应用沙盒 Documents。
-          final documents = await getApplicationDocumentsDirectory();
-          dir = Directory(p.join(documents.path, 'KKRemote'));
-        } else {
-          final downloads = await getDownloadsDirectory();
-          if (downloads != null) {
-            dir = Directory(p.join(downloads.path, 'KK远程'));
-          } else {
-            final documents = await getApplicationDocumentsDirectory();
-            dir = Directory(p.join(documents.path, 'KK远程下载'));
-          }
-        }
-      }
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
+      // iOS 容器根目录不可写，统一由 resolveDownloadDirectory 处理平台差异。
+      final dir = await resolveDownloadDirectory(
+        configured: services.settings.downloadDir,
+      );
       downloadDir = dir.path;
       await services.settings.setString('download_dir', downloadDir);
       final files = await dir.list().where((item) => item is File).toList();

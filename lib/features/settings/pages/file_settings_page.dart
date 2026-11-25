@@ -3,12 +3,11 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/download_paths.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../state/settings_provider.dart';
 import '../../../widgets/app_dialogs.dart';
@@ -37,15 +36,11 @@ class _FileSettingsPageState extends State<FileSettingsPage> {
   Future<void> _load() async {
     try {
       final settings = context.read<SettingsProvider>();
-      var path = settings.downloadDir;
-      if (path.isEmpty) {
-        final downloads = await getDownloadsDirectory();
-        path = downloads == null
-            ? p.join((await getApplicationDocumentsDirectory()).path, 'KK远程下载')
-            : p.join(downloads.path, 'KK远程');
+      final dir = await resolveDownloadDirectory(configured: settings.downloadDir);
+      final path = dir.path;
+      if (path != settings.downloadDir) {
+        await settings.setString(SettingsKeys.downloadDir, path);
       }
-      final dir = Directory(path);
-      if (!await dir.exists()) await dir.create(recursive: true);
       var size = 0;
       var count = 0;
       await for (final entity in dir.list()) {
