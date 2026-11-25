@@ -39,8 +39,8 @@ target.build_configurations.each do |config|
   settings['SKIP_INSTALL'] = 'YES'
   settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
   settings['TARGETED_DEVICE_FAMILY'] = '1,2'
-  settings['MARKETING_VERSION'] = '1.2.5'
-  settings['CURRENT_PROJECT_VERSION'] = '41'
+  settings['MARKETING_VERSION'] = '1.2.6'
+  settings['CURRENT_PROJECT_VERSION'] = '42'
   settings['GENERATE_INFOPLIST_FILE'] = 'NO'
   settings['LD_RUNPATH_SEARCH_PATHS'] =
     '$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks'

@@ -45,6 +45,7 @@ class SignalingClient {
   String _sessionId = '';
   bool _disposed = false;
   bool _awaitingPong = false;
+  DateTime? _lastInboundAt;
 
   final StreamController<SignalingMessage> _events =
       StreamController<SignalingMessage>.broadcast();
@@ -52,6 +53,9 @@ class SignalingClient {
   Stream<SignalingMessage> get events => _events.stream;
   bool get isConnected => _channel != null;
   String get sessionId => _sessionId;
+
+  /// 最近一次收到服务端消息（含 pong）的时间，用于判断连接是否假死。
+  DateTime? get lastInboundAt => _lastInboundAt;
 
   /// controller 使用登录 accessToken；游客 token 同样可用。
   Future<void> connect({
@@ -82,6 +86,7 @@ class SignalingClient {
       _channel = null;
       rethrow;
     }
+    _lastInboundAt = DateTime.now();
     _subscription = _channel!.stream.listen(
       _handleRaw,
       onError: (Object error, StackTrace stack) {
@@ -97,6 +102,7 @@ class SignalingClient {
 
   void _handleRaw(dynamic raw) {
     try {
+      _lastInboundAt = DateTime.now();
       final map = asMap(jsonDecode(raw.toString()));
       final type = asString(map['type']);
       if (type.isEmpty) return;

@@ -12,6 +12,7 @@ import 'core/platform/deep_link_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/state/auth_provider.dart';
+import 'features/host/host_incoming_gate.dart';
 import 'routing/app_router.dart';
 import 'state/settings_provider.dart';
 import 'widgets/brand_logo.dart';
@@ -28,6 +29,7 @@ class KKRemoteApp extends StatefulWidget {
 
 class _KKRemoteAppState extends State<KKRemoteApp> {
   late final GoRouter _router = buildRouter(widget.auth);
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -65,6 +67,7 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
             GlobalCupertinoLocalizations.delegate,
           ],
           routerConfig: _router,
+          navigatorKey: _navigatorKey,
           builder: (context, child) {
             final media = MediaQuery.of(context);
             return MediaQuery(
@@ -73,7 +76,10 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
               ),
               child: AppLockGate(
                 settings: settings,
-                child: child ?? const SizedBox.shrink(),
+                child: HostIncomingGate(
+                  navigatorKey: _navigatorKey,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             );
           },

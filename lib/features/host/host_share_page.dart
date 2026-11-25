@@ -19,7 +19,6 @@ class HostSharePage extends StatefulWidget {
 
 class _HostSharePageState extends State<HostSharePage> {
   late final HostShareController _controller;
-  bool _dialogShowing = false;
 
   @override
   void initState() {
@@ -37,60 +36,10 @@ class _HostSharePageState extends State<HostSharePage> {
     super.dispose();
   }
 
+  // 连接确认弹窗由应用根部的 HostIncomingGate 统一处理，本页只负责刷新状态。
   void _onChanged() {
     if (!mounted) return;
     setState(() {});
-    if (_controller.status == HostShareStatus.incoming &&
-        !_dialogShowing &&
-        _controller.incoming != null) {
-      _dialogShowing = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showIncoming());
-    }
-  }
-
-  Future<void> _showIncoming() async {
-    final call = _controller.incoming;
-    if (!mounted || call == null) {
-      _dialogShowing = false;
-      return;
-    }
-    final accept = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('桌面端请求观看'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(call.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            Text('${call.platformLabel} · ${call.controllerIp}'),
-            const SizedBox(height: 10),
-            Text(
-              '接受后本机屏幕与麦克风会共享给对方，画面仅用于观看，不会被远程操作。',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('拒绝'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('接受'),
-          ),
-        ],
-      ),
-    );
-    _dialogShowing = false;
-    if (accept == true) {
-      await _controller.accept();
-    } else {
-      _controller.reject();
-    }
   }
 
   void _copy(String value, String label) {

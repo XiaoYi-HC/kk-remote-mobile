@@ -48,6 +48,9 @@ class HostShareController extends ChangeNotifier {
   bool _sharing = false;
   bool _starting = false;
   bool _disposed = false;
+  bool _reconnecting = false;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
   String _sessionId = '';
 
   RTCPeerConnection? _pc;
@@ -189,7 +192,9 @@ class HostShareController extends ChangeNotifier {
         break;
       case 'socket.closed':
       case 'socket.error':
-        if (!_disposed) _fail(msg.displayMessage.isEmpty ? '信令连接已断开' : msg.displayMessage);
+        // 信令断开后必须自动重连：用户切后台或离开共享页时通道可能被系统断开，
+        // 不重连的话桌面端发起连接手机会收不到任何提示。
+        _scheduleReconnect();
         break;
       case 'error':
         if (!_disposed && msg.displayMessage.isNotEmpty) {
@@ -501,11 +506,63 @@ class HostShareController extends ChangeNotifier {
   }
 
   Future<void> retry() async {
+    _reconnectTimer?.cancel();
+    _reconnectAttempts = 0;
     await _eventSub?.cancel();
     await _signaling.close();
     await _closePeer();
     registration = null;
     await init();
+  }
+
+  /// 应用回到前台时调用：连接被系统冻结成半开状态时主动重建。
+  Future<void> ensureOnline() async {
+    if (_disposed || registration == null) return;
+    final last = _signaling.lastInboundAt;
+    final stale = last == null || DateTime.now().difference(last) > const Duration(seconds: 60);
+    if (_signaling.isConnected && !stale) return;
+    await _reconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_disposed) return;
+    _reconnectTimer?.cancel();
+    final delay = Duration(seconds: _reconnectAttempts >= 3 ? 10 : 3);
+    _reconnectTimer = Timer(delay, () => unawaited(_reconnect()));
+  }
+
+  Future<void> _reconnect() async {
+    if (_disposed || _reconnecting) return;
+    if (_initializing) {
+      _scheduleReconnect();
+      return;
+    }
+    _reconnecting = true;
+    _reconnectAttempts++;
+    if (status != HostShareStatus.sharing) {
+      _setStatus(HostShareStatus.registering);
+    }
+    // 旧会话随着信令断开已经不可用，复用旧 PeerConnection 会导致新的
+    // offer 无法应用，这里先释放；屏幕采集本身保留，重连后可继续共享。
+    await _closePeer();
+    _sessionId = '';
+    _remoteDescriptionSet = false;
+    _pendingCandidates.clear();
+    _pendingOffer = null;
+    try {
+      await init();
+    } finally {
+      _reconnecting = false;
+    }
+    if (_disposed) return;
+    if (_signaling.isConnected) {
+      _reconnectAttempts = 0;
+      if (_sharing && status != HostShareStatus.sharing) {
+        _setStatus(HostShareStatus.ready);
+      }
+    } else {
+      _scheduleReconnect();
+    }
   }
 
   void _setStatus(HostShareStatus value) {
@@ -523,6 +580,7 @@ class HostShareController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _reconnectTimer?.cancel();
     _eventSub?.cancel();
     _signaling.close();
     unawaited(_closePeer());
