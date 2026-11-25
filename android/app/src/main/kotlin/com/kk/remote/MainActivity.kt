@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.app.PictureInPictureParams
 import android.content.ContentValues
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.VibrationEffect
