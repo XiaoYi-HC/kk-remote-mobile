@@ -12,6 +12,7 @@ import 'core/platform/deep_link_service.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/state/auth_provider.dart';
+import 'features/auth/widgets/account_expiry_gate.dart';
 import 'features/host/host_incoming_gate.dart';
 import 'routing/app_router.dart';
 import 'state/settings_provider.dart';
@@ -77,7 +78,10 @@ class _KKRemoteAppState extends State<KKRemoteApp> {
                 settings: settings,
                 child: HostIncomingGate(
                   navigatorKey: _navigatorKey,
-                  child: child ?? const SizedBox.shrink(),
+                  child: AccountExpiryGate(
+                    navigatorKey: _navigatorKey,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
             );

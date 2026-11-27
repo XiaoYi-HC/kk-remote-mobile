@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/platform/account_session_notice.dart';
 import '../../../core/platform/notification_service.dart';
 import '../../../core/storage/local_store.dart';
 import '../../../data/api/account_api.dart';
@@ -22,6 +23,8 @@ class AuthProvider extends ChangeNotifier {
         _store = store {
     _api.onUnauthorized = _handleUnauthorized;
     _api.onRefreshToken = refreshAccessToken;
+    // 信令层收到账号到期推送时，同样走强制退出 + 全局提示。
+    AccountSessionNotice.instance.onExpired = _handleAccountExpired;
     _restore();
   }
 
@@ -44,6 +47,7 @@ class AuthProvider extends ChangeNotifier {
   UserProfile? _user;
   String _pending2faTicket = '';
   int _sessionGeneration = 0;
+  String? _sessionNotice;
 
   String get accessToken => _accessToken;
   String get refreshToken => _refreshToken;
@@ -56,6 +60,15 @@ class AuthProvider extends ChangeNotifier {
   String? get error => _error;
   UserProfile? get user => _user;
   String get pending2faTicket => _pending2faTicket;
+
+  /// 被服务端强制下线时的提示（例如「此账号已到期」），由全局弹窗消费后清除。
+  String? get sessionNotice => _sessionNotice;
+
+  void clearSessionNotice() {
+    if (_sessionNotice == null) return;
+    _sessionNotice = null;
+    notifyListeners();
+  }
 
   String get displayName {
     if (_isGuest) return '游客';
@@ -352,9 +365,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _handleUnauthorized() async {
+  Future<void> _handleUnauthorized(String message) async {
     if (_accessToken.isEmpty) return;
+    // 账号到期属于管理员主动限制，保留服务端文案用于弹窗提示；
+    // 普通登录过期只做静默退出，避免每次 token 失效都打扰用户。
+    if (message.contains('到期')) {
+      _sessionNotice = message;
+    }
     await logout(callApi: false);
+  }
+
+  Future<void> _handleAccountExpired(String message) async {
+    _sessionNotice =
+        message.isEmpty ? '此账号已到期，请联系管理员' : message;
+    if (_accessToken.isNotEmpty) {
+      await logout(callApi: false);
+    } else {
+      notifyListeners();
+    }
   }
 
   void _setLoading(bool value) {

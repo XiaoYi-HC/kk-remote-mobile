@@ -8,6 +8,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/platform/account_session_notice.dart';
 import '../../../core/utils/json_utils.dart';
 import '../../../data/models/common.dart';
 import '../../../data/models/remote.dart';
@@ -277,6 +278,13 @@ class RemoteSessionProvider extends ChangeNotifier {
       case 'session.closed':
         final reason = asString(event.data['reason'], fallback: 'peer_closed');
         _handleRemoteClosed(reason);
+        break;
+      case 'account.expired':
+        // 管理员设置的有效期到期，服务端会即时推送，无需等下一次接口请求。
+        AccountSessionNotice.instance.notifyExpired(
+          asString(event.data['message'], fallback: '此账号已到期，请联系管理员'),
+        );
+        _handleRemoteClosed('account_expired');
         break;
       case 'error':
         final code = event.code;

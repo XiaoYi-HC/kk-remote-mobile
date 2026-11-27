@@ -8,7 +8,7 @@ import '../constants/app_constants.dart';
 import '../utils/json_utils.dart';
 import 'api_exception.dart';
 
-typedef UnauthorizedHandler = Future<void> Function();
+typedef UnauthorizedHandler = Future<void> Function(String message);
 
 /// 刷新 access token 的回调：成功返回新的 access token，失败返回 null。
 typedef TokenRefreshHandler = Future<String?> Function();
@@ -174,14 +174,14 @@ class ApiClient {
       if (!retried && await _tryRefreshToken()) {
         return _withAuthRetry(run, retried: true);
       }
-      _notifyUnauthorized();
+      _notifyUnauthorized(error.message);
       rethrow;
     } on DioException catch (error) {
       if (_isUnauthorizedError(error)) {
         if (!retried && await _tryRefreshToken()) {
           return _withAuthRetry(run, retried: true);
         }
-        _notifyUnauthorized();
+        _notifyUnauthorized(_mapDioError(error).message);
       }
       throw _mapDioError(error);
     }
@@ -215,10 +215,10 @@ class ApiClient {
     }
   }
 
-  void _notifyUnauthorized() {
+  void _notifyUnauthorized(String message) {
     final handler = onUnauthorized;
     if (handler == null) return;
-    unawaited(handler());
+    unawaited(handler(message));
   }
 
   dynamic _unwrap(Response<dynamic> response) {

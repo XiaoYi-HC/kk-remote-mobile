@@ -6,6 +6,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/platform/account_session_notice.dart';
 import '../../core/utils/json_utils.dart';
 import '../../data/models/common.dart';
 import '../../data/ws/signaling_client.dart';
@@ -189,6 +190,13 @@ class HostShareController extends ChangeNotifier {
         break;
       case 'session.closed':
         unawaited(_endSession(asString(msg.data['reason'])));
+        break;
+      case 'account.expired':
+        // 账号到期：停止共享并交给全局提示处理。
+        AccountSessionNotice.instance.notifyExpired(
+          asString(msg.data['message'], fallback: '此账号已到期，请联系管理员'),
+        );
+        unawaited(_endSession('account_expired'));
         break;
       case 'socket.closed':
       case 'socket.error':
